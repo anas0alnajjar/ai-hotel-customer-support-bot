@@ -979,8 +979,29 @@ def _tool_arguments(
         (),
     )
 
-    return {
+    selected = {
         name: values[name]
         for name in fields
         if name in values
     }
+
+    if (
+        intent is IntentCode.MAINTENANCE_REQUEST
+        and str(selected.get("category", "")).strip().lower() == "general"
+    ):
+        description = str(selected.get("description", "")).casefold()
+        selected["category"] = (
+            "hvac"
+            if any(
+                token in description
+                for token in (
+                    "\u0645\u0643\u064a\u0641",
+                    "\u062a\u0643\u064a\u064a\u0641",
+                    "air conditioner",
+                    "hvac",
+                )
+            )
+            else "appliance"
+        )
+
+    return selected
