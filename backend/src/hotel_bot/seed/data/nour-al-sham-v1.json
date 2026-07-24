@@ -1,0 +1,110 @@
+{
+  "dataset_version": "1.0.0",
+  "hotel": {
+    "code": "nour-al-sham-grand",
+    "names": {"ar": "فندق نور الشام الكبير", "en": "Nour Al-Sham Grand Hotel"},
+    "description": {
+      "ar": "فندق افتراضي متكامل مخصص لاختبار منصة دعم النزلاء.",
+      "en": "A complete fictional hotel used to validate the guest-support platform."
+    },
+    "address": {
+      "ar": "شارع الياسمين الافتراضي، دمشق، سوريا",
+      "en": "Fictional Jasmine Street, Damascus, Syria"
+    },
+    "timezone": "Asia/Damascus",
+    "currency": "USD",
+    "check_in_time": "15:00",
+    "check_out_time": "12:00",
+    "reception_email": "reception@nour-al-sham.example",
+    "reception_phone": "+963-11-000-0000"
+  },
+  "room_types": [
+    {
+      "code": "standard_king",
+      "names": {"ar": "غرفة قياسية بسرير كبير", "en": "Standard King Room"},
+      "descriptions": {"ar": "غرفة هادئة مناسبة لشخصين.", "en": "A quiet room designed for two guests."},
+      "capacity_adults": 2,
+      "capacity_children": 1,
+      "amenities": ["wifi", "air_conditioning", "minibar", "safe", "work_desk"]
+    },
+    {
+      "code": "standard_twin",
+      "names": {"ar": "غرفة قياسية بسريرين", "en": "Standard Twin Room"},
+      "descriptions": {"ar": "غرفة بسريرين منفصلين.", "en": "A practical room with two separate beds."},
+      "capacity_adults": 2,
+      "capacity_children": 1,
+      "amenities": ["wifi", "air_conditioning", "minibar", "safe", "work_desk"]
+    },
+    {
+      "code": "deluxe_king",
+      "names": {"ar": "غرفة ديلوكس بسرير كبير", "en": "Deluxe King Room"},
+      "descriptions": {"ar": "غرفة واسعة مع منطقة جلوس.", "en": "A spacious king room with a seating area."},
+      "capacity_adults": 2,
+      "capacity_children": 1,
+      "amenities": ["wifi", "air_conditioning", "minibar", "safe", "smart_tv", "seating_area"]
+    },
+    {
+      "code": "family_suite",
+      "names": {"ar": "جناح عائلي", "en": "Family Suite"},
+      "descriptions": {"ar": "جناح بغرفتي نوم للعائلات.", "en": "A two-bedroom suite for families."},
+      "capacity_adults": 4,
+      "capacity_children": 2,
+      "amenities": ["wifi", "air_conditioning", "minibar", "safe", "smart_tv", "living_room", "kitchenette"]
+    },
+    {
+      "code": "executive_suite",
+      "names": {"ar": "جناح تنفيذي", "en": "Executive Suite"},
+      "descriptions": {"ar": "جناح تنفيذي مع صالة عمل مستقلة.", "en": "An executive suite with a separate work lounge."},
+      "capacity_adults": 3,
+      "capacity_children": 1,
+      "amenities": ["wifi", "air_conditioning", "minibar", "safe", "smart_tv", "living_room", "espresso_machine"]
+    }
+  ],
+  "rooms": [
+    {"room_number": "101", "room_type_code": "standard_king", "floor": 1},
+    {"room_number": "102", "room_type_code": "standard_king", "floor": 1},
+    {"room_number": "103", "room_type_code": "standard_twin", "floor": 1},
+    {"room_number": "104", "room_type_code": "standard_twin", "floor": 1},
+    {"room_number": "105", "room_type_code": "standard_twin", "floor": 1},
+    {"room_number": "106", "room_type_code": "standard_twin", "floor": 1, "operational_status": "maintenance"},
+    {"room_number": "201", "room_type_code": "standard_king", "floor": 2},
+    {"room_number": "202", "room_type_code": "standard_king", "floor": 2},
+    {"room_number": "203", "room_type_code": "standard_twin", "floor": 2},
+    {"room_number": "204", "room_type_code": "standard_twin", "floor": 2},
+    {"room_number": "205", "room_type_code": "deluxe_king", "floor": 2},
+    {"room_number": "206", "room_type_code": "deluxe_king", "floor": 2},
+    {"room_number": "207", "room_type_code": "deluxe_king", "floor": 2},
+    {"room_number": "208", "room_type_code": "deluxe_king", "floor": 2},
+    {"room_number": "301", "room_type_code": "family_suite", "floor": 3},
+    {"room_number": "302", "room_type_code": "family_suite", "floor": 3},
+    {"room_number": "303", "room_type_code": "family_suite", "floor": 3},
+    {"room_number": "304", "room_type_code": "executive_suite", "floor": 3, "operational_status": "out_of_service"},
+    {"room_number": "305", "room_type_code": "executive_suite", "floor": 3},
+    {"room_number": "306", "room_type_code": "executive_suite", "floor": 3},
+    {"room_number": "307", "room_type_code": "executive_suite", "floor": 3},
+    {"room_number": "308", "room_type_code": "executive_suite", "floor": 3}
+  ],
+  "guests": [
+    {"key": "guest_amina", "preferred_language": "ar"},
+    {"key": "guest_omar", "preferred_language": "ar"},
+    {"key": "guest_sara", "preferred_language": "en"},
+    {"key": "guest_khaled", "preferred_language": "ar"},
+    {"key": "guest_maya", "preferred_language": "en"},
+    {"key": "guest_yousef", "preferred_language": "ar"}
+  ],
+  "bookings": [
+    {"reference": "BKG-2026-0001", "guest_key": "guest_amina", "verification_value": "0101", "guest_name_masked": "A*** A***", "check_in": "2026-08-01", "check_out": "2026-08-05", "room_type_code": "standard_king", "room_number": "101", "adults": 2, "children": 0, "status": "confirmed"},
+    {"reference": "BKG-2026-0002", "guest_key": "guest_omar", "verification_value": "0202", "guest_name_masked": "O*** H***", "check_in": "2026-08-01", "check_out": "2026-08-03", "room_type_code": "standard_twin", "room_number": "103", "adults": 2, "children": 1, "status": "pending"},
+    {"reference": "BKG-2026-0003", "guest_key": "guest_sara", "verification_value": "0303", "guest_name_masked": "S*** M***", "check_in": "2026-08-02", "check_out": "2026-08-06", "room_type_code": "deluxe_king", "adults": 2, "children": 0, "status": "confirmed"},
+    {"reference": "BKG-2026-0004", "guest_key": "guest_khaled", "verification_value": "0404", "guest_name_masked": "K*** N***", "check_in": "2026-08-10", "check_out": "2026-08-17", "room_type_code": "family_suite", "room_number": "301", "adults": 4, "children": 2, "status": "confirmed"},
+    {"reference": "BKG-2026-0005", "guest_key": "guest_maya", "verification_value": "0505", "guest_name_masked": "M*** R***", "check_in": "2026-08-02", "check_out": "2026-08-04", "room_type_code": "executive_suite", "room_number": "305", "adults": 2, "children": 0, "status": "cancelled"},
+    {"reference": "BKG-2026-0006", "guest_key": "guest_yousef", "verification_value": "0606", "guest_name_masked": "Y*** S***", "check_in": "2026-07-13", "check_out": "2026-07-16", "room_type_code": "standard_twin", "room_number": "106", "adults": 1, "children": 0, "status": "checked_in"},
+    {"reference": "BKG-2026-0007", "guest_key": "guest_amina", "verification_value": "0707", "guest_name_masked": "A*** A***", "check_in": "2026-06-01", "check_out": "2026-06-04", "room_type_code": "standard_king", "room_number": "201", "adults": 2, "children": 0, "status": "checked_out"},
+    {"reference": "BKG-2026-0008", "guest_key": "guest_sara", "verification_value": "0808", "guest_name_masked": "S*** M***", "check_in": "2026-08-01", "check_out": "2026-08-05", "room_type_code": "executive_suite", "room_number": "305", "adults": 2, "children": 1, "status": "confirmed"}
+  ],
+  "service_requests": [
+    {"tracking_code": "SR-SEED-0001", "request_type": "room_service", "category": "amenities", "room_number": "101", "booking_reference": "BKG-2026-0001", "description": "Deliver two additional bath towel sets to the room.", "urgency": "normal", "status": "open", "idempotency_key": "seed-room-service-0001"},
+    {"tracking_code": "SR-SEED-0002", "request_type": "maintenance", "category": "electrical", "room_number": "106", "booking_reference": "BKG-2026-0006", "description": "Inspect the intermittent desk power outlet safely.", "urgency": "high", "status": "in_progress", "idempotency_key": "seed-maintenance-0002"},
+    {"tracking_code": "SR-SEED-0003", "request_type": "maintenance", "category": "safety", "room_number": "304", "description": "Inspect a simulated safety alarm fault before returning the room to service.", "urgency": "emergency", "status": "open", "idempotency_key": "seed-maintenance-0003"}
+  ]
+}

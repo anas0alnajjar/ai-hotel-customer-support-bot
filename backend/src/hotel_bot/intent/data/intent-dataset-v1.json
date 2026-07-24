@@ -1,0 +1,1927 @@
+{
+  "dataset_version": "intent-dataset-v1.0.0",
+  "description": "Synthetic bilingual hotel-support intent baseline split by scenario; not a substitute for real guest-language validation.",
+  "samples": [
+    {
+      "id": "hotel_info-01-ar",
+      "intent": "hotel_info",
+      "language": "ar",
+      "scenario_id": "hotel_info-01",
+      "split": "train",
+      "text": "ما هي المرافق الموجودة في الفندق؟"
+    },
+    {
+      "id": "hotel_info-01-en",
+      "intent": "hotel_info",
+      "language": "en",
+      "scenario_id": "hotel_info-01",
+      "split": "train",
+      "text": "What facilities does the hotel have?"
+    },
+    {
+      "id": "hotel_info-02-ar",
+      "intent": "hotel_info",
+      "language": "ar",
+      "scenario_id": "hotel_info-02",
+      "split": "train",
+      "text": "أين يقع فندق نور الشام؟"
+    },
+    {
+      "id": "hotel_info-02-en",
+      "intent": "hotel_info",
+      "language": "en",
+      "scenario_id": "hotel_info-02",
+      "split": "train",
+      "text": "Where is Nour Al-Sham hotel located?"
+    },
+    {
+      "id": "hotel_info-03-ar",
+      "intent": "hotel_info",
+      "language": "ar",
+      "scenario_id": "hotel_info-03",
+      "split": "train",
+      "text": "ما هو وقت تسجيل الدخول؟"
+    },
+    {
+      "id": "hotel_info-03-en",
+      "intent": "hotel_info",
+      "language": "en",
+      "scenario_id": "hotel_info-03",
+      "split": "train",
+      "text": "What time is check-in?"
+    },
+    {
+      "id": "hotel_info-04-ar",
+      "intent": "hotel_info",
+      "language": "ar",
+      "scenario_id": "hotel_info-04",
+      "split": "train",
+      "text": "متى يجب تسجيل المغادرة؟"
+    },
+    {
+      "id": "hotel_info-04-en",
+      "intent": "hotel_info",
+      "language": "en",
+      "scenario_id": "hotel_info-04",
+      "split": "train",
+      "text": "When is check-out time?"
+    },
+    {
+      "id": "hotel_info-05-ar",
+      "intent": "hotel_info",
+      "language": "ar",
+      "scenario_id": "hotel_info-05",
+      "split": "train",
+      "text": "هل تتوفر خدمة واي فاي في الفندق؟"
+    },
+    {
+      "id": "hotel_info-05-en",
+      "intent": "hotel_info",
+      "language": "en",
+      "scenario_id": "hotel_info-05",
+      "split": "train",
+      "text": "Does the hotel provide Wi-Fi?"
+    },
+    {
+      "id": "hotel_info-06-ar",
+      "intent": "hotel_info",
+      "language": "ar",
+      "scenario_id": "hotel_info-06",
+      "split": "train",
+      "text": "هل الإفطار مشمول وما هي مواعيده؟"
+    },
+    {
+      "id": "hotel_info-06-en",
+      "intent": "hotel_info",
+      "language": "en",
+      "scenario_id": "hotel_info-06",
+      "split": "train",
+      "text": "Is breakfast included and when is it served?"
+    },
+    {
+      "id": "hotel_info-07-ar",
+      "intent": "hotel_info",
+      "language": "ar",
+      "scenario_id": "hotel_info-07",
+      "split": "validation",
+      "text": "هل يوجد موقف سيارات للنزلاء؟"
+    },
+    {
+      "id": "hotel_info-07-en",
+      "intent": "hotel_info",
+      "language": "en",
+      "scenario_id": "hotel_info-07",
+      "split": "validation",
+      "text": "Is guest parking available?"
+    },
+    {
+      "id": "hotel_info-08-ar",
+      "intent": "hotel_info",
+      "language": "ar",
+      "scenario_id": "hotel_info-08",
+      "split": "validation",
+      "text": "هل يسمح الفندق باصطحاب الحيوانات؟"
+    },
+    {
+      "id": "hotel_info-08-en",
+      "intent": "hotel_info",
+      "language": "en",
+      "scenario_id": "hotel_info-08",
+      "split": "validation",
+      "text": "What is the hotel's pet policy?"
+    },
+    {
+      "id": "hotel_info-09-ar",
+      "intent": "hotel_info",
+      "language": "ar",
+      "scenario_id": "hotel_info-09",
+      "split": "test",
+      "text": "ما هي ساعات عمل المسبح؟"
+    },
+    {
+      "id": "hotel_info-09-en",
+      "intent": "hotel_info",
+      "language": "en",
+      "scenario_id": "hotel_info-09",
+      "split": "test",
+      "text": "What are the swimming pool opening hours?"
+    },
+    {
+      "id": "hotel_info-10-ar",
+      "intent": "hotel_info",
+      "language": "ar",
+      "scenario_id": "hotel_info-10",
+      "split": "test",
+      "text": "كم يبعد الفندق عن المطار؟"
+    },
+    {
+      "id": "hotel_info-10-en",
+      "intent": "hotel_info",
+      "language": "en",
+      "scenario_id": "hotel_info-10",
+      "split": "test",
+      "text": "How far is the hotel from the airport?"
+    },
+    {
+      "id": "hotel_info-11-ar",
+      "intent": "hotel_info",
+      "language": "ar",
+      "scenario_id": "hotel_info-11",
+      "split": "test",
+      "text": "هل التدخين مسموح داخل الفندق؟"
+    },
+    {
+      "id": "hotel_info-11-en",
+      "intent": "hotel_info",
+      "language": "en",
+      "scenario_id": "hotel_info-11",
+      "split": "test",
+      "text": "Is smoking allowed inside the hotel?"
+    },
+    {
+      "id": "hotel_info-12-ar",
+      "intent": "hotel_info",
+      "language": "ar",
+      "scenario_id": "hotel_info-12",
+      "split": "test",
+      "text": "ما هي سياسة المغادرة المتأخرة؟"
+    },
+    {
+      "id": "hotel_info-12-en",
+      "intent": "hotel_info",
+      "language": "en",
+      "scenario_id": "hotel_info-12",
+      "split": "test",
+      "text": "What is the late check-out policy?"
+    },
+    {
+      "id": "room_types-01-ar",
+      "intent": "room_types",
+      "language": "ar",
+      "scenario_id": "room_types-01",
+      "split": "train",
+      "text": "ما هي أنواع الغرف الموجودة لديكم؟"
+    },
+    {
+      "id": "room_types-01-en",
+      "intent": "room_types",
+      "language": "en",
+      "scenario_id": "room_types-01",
+      "split": "train",
+      "text": "Which room categories do you offer?"
+    },
+    {
+      "id": "room_types-02-ar",
+      "intent": "room_types",
+      "language": "ar",
+      "scenario_id": "room_types-02",
+      "split": "train",
+      "text": "أخبرني عن مواصفات الغرفة الديلوكس"
+    },
+    {
+      "id": "room_types-02-en",
+      "intent": "room_types",
+      "language": "en",
+      "scenario_id": "room_types-02",
+      "split": "train",
+      "text": "Tell me the features of a deluxe room"
+    },
+    {
+      "id": "room_types-03-ar",
+      "intent": "room_types",
+      "language": "ar",
+      "scenario_id": "room_types-03",
+      "split": "train",
+      "text": "هل لديكم أجنحة فندقية؟"
+    },
+    {
+      "id": "room_types-03-en",
+      "intent": "room_types",
+      "language": "en",
+      "scenario_id": "room_types-03",
+      "split": "train",
+      "text": "Do you have hotel suites?"
+    },
+    {
+      "id": "room_types-04-ar",
+      "intent": "room_types",
+      "language": "ar",
+      "scenario_id": "room_types-04",
+      "split": "train",
+      "text": "أريد معلومات عن الغرفة العائلية"
+    },
+    {
+      "id": "room_types-04-en",
+      "intent": "room_types",
+      "language": "en",
+      "scenario_id": "room_types-04",
+      "split": "train",
+      "text": "I need information about the family room"
+    },
+    {
+      "id": "room_types-05-ar",
+      "intent": "room_types",
+      "language": "ar",
+      "scenario_id": "room_types-05",
+      "split": "train",
+      "text": "ما خيارات الأسرّة في الغرف؟"
+    },
+    {
+      "id": "room_types-05-en",
+      "intent": "room_types",
+      "language": "en",
+      "scenario_id": "room_types-05",
+      "split": "train",
+      "text": "What bed options are available in the rooms?"
+    },
+    {
+      "id": "room_types-06-ar",
+      "intent": "room_types",
+      "language": "ar",
+      "scenario_id": "room_types-06",
+      "split": "train",
+      "text": "هل توجد غرف مهيأة لذوي الإعاقة؟"
+    },
+    {
+      "id": "room_types-06-en",
+      "intent": "room_types",
+      "language": "en",
+      "scenario_id": "room_types-06",
+      "split": "train",
+      "text": "Are accessible rooms available?"
+    },
+    {
+      "id": "room_types-07-ar",
+      "intent": "room_types",
+      "language": "ar",
+      "scenario_id": "room_types-07",
+      "split": "validation",
+      "text": "أي أنواع الغرف تطل على المدينة؟"
+    },
+    {
+      "id": "room_types-07-en",
+      "intent": "room_types",
+      "language": "en",
+      "scenario_id": "room_types-07",
+      "split": "validation",
+      "text": "Which room types have a city view?"
+    },
+    {
+      "id": "room_types-08-ar",
+      "intent": "room_types",
+      "language": "ar",
+      "scenario_id": "room_types-08",
+      "split": "validation",
+      "text": "كم شخصاً تستوعب كل فئة غرفة؟"
+    },
+    {
+      "id": "room_types-08-en",
+      "intent": "room_types",
+      "language": "en",
+      "scenario_id": "room_types-08",
+      "split": "validation",
+      "text": "How many guests can each room type hold?"
+    },
+    {
+      "id": "room_types-09-ar",
+      "intent": "room_types",
+      "language": "ar",
+      "scenario_id": "room_types-09",
+      "split": "test",
+      "text": "ما هي أبسط فئة غرفة لديكم؟"
+    },
+    {
+      "id": "room_types-09-en",
+      "intent": "room_types",
+      "language": "en",
+      "scenario_id": "room_types-09",
+      "split": "test",
+      "text": "What is your most basic room category?"
+    },
+    {
+      "id": "room_types-10-ar",
+      "intent": "room_types",
+      "language": "ar",
+      "scenario_id": "room_types-10",
+      "split": "test",
+      "text": "أي غرفة تحتوي على شرفة؟"
+    },
+    {
+      "id": "room_types-10-en",
+      "intent": "room_types",
+      "language": "en",
+      "scenario_id": "room_types-10",
+      "split": "test",
+      "text": "Which room category includes a balcony?"
+    },
+    {
+      "id": "room_types-11-ar",
+      "intent": "room_types",
+      "language": "ar",
+      "scenario_id": "room_types-11",
+      "split": "test",
+      "text": "صف لي الغرفة التنفيذية"
+    },
+    {
+      "id": "room_types-11-en",
+      "intent": "room_types",
+      "language": "en",
+      "scenario_id": "room_types-11",
+      "split": "test",
+      "text": "Describe the executive room type"
+    },
+    {
+      "id": "room_types-12-ar",
+      "intent": "room_types",
+      "language": "ar",
+      "scenario_id": "room_types-12",
+      "split": "test",
+      "text": "قارن بين مساحات أنواع الغرف"
+    },
+    {
+      "id": "room_types-12-en",
+      "intent": "room_types",
+      "language": "en",
+      "scenario_id": "room_types-12",
+      "split": "test",
+      "text": "Compare the sizes of your room categories"
+    },
+    {
+      "id": "room_availability-01-ar",
+      "intent": "room_availability",
+      "language": "ar",
+      "scenario_id": "room_availability-01",
+      "split": "train",
+      "text": "هل توجد غرفة متاحة الليلة؟"
+    },
+    {
+      "id": "room_availability-01-en",
+      "intent": "room_availability",
+      "language": "en",
+      "scenario_id": "room_availability-01",
+      "split": "train",
+      "text": "Is there a room available tonight?"
+    },
+    {
+      "id": "room_availability-02-ar",
+      "intent": "room_availability",
+      "language": "ar",
+      "scenario_id": "room_availability-02",
+      "split": "train",
+      "text": "تحقق من التوفر من 10 إلى 13 آب"
+    },
+    {
+      "id": "room_availability-02-en",
+      "intent": "room_availability",
+      "language": "en",
+      "scenario_id": "room_availability-02",
+      "split": "train",
+      "text": "Check availability from August 10 to 13"
+    },
+    {
+      "id": "room_availability-03-ar",
+      "intent": "room_availability",
+      "language": "ar",
+      "scenario_id": "room_availability-03",
+      "split": "train",
+      "text": "هل توجد غرفة لعائلة من أربعة أشخاص؟"
+    },
+    {
+      "id": "room_availability-03-en",
+      "intent": "room_availability",
+      "language": "en",
+      "scenario_id": "room_availability-03",
+      "split": "train",
+      "text": "Is a room available for a family of four?"
+    },
+    {
+      "id": "room_availability-04-ar",
+      "intent": "room_availability",
+      "language": "ar",
+      "scenario_id": "room_availability-04",
+      "split": "train",
+      "text": "أحتاج غرفة لشخصين الأسبوع القادم"
+    },
+    {
+      "id": "room_availability-04-en",
+      "intent": "room_availability",
+      "language": "en",
+      "scenario_id": "room_availability-04",
+      "split": "train",
+      "text": "I need an available room for two next week"
+    },
+    {
+      "id": "room_availability-05-ar",
+      "intent": "room_availability",
+      "language": "ar",
+      "scenario_id": "room_availability-05",
+      "split": "train",
+      "text": "ما الغرف الشاغرة في عطلة نهاية الأسبوع؟"
+    },
+    {
+      "id": "room_availability-05-en",
+      "intent": "room_availability",
+      "language": "en",
+      "scenario_id": "room_availability-05",
+      "split": "train",
+      "text": "What rooms are vacant this weekend?"
+    },
+    {
+      "id": "room_availability-06-ar",
+      "intent": "room_availability",
+      "language": "ar",
+      "scenario_id": "room_availability-06",
+      "split": "train",
+      "text": "ابحث عن غرفة متاحة الشهر القادم"
+    },
+    {
+      "id": "room_availability-06-en",
+      "intent": "room_availability",
+      "language": "en",
+      "scenario_id": "room_availability-06",
+      "split": "train",
+      "text": "Find an available room next month"
+    },
+    {
+      "id": "room_availability-07-ar",
+      "intent": "room_availability",
+      "language": "ar",
+      "scenario_id": "room_availability-07",
+      "split": "validation",
+      "text": "هل يمكنني الإقامة ثلاث ليال ابتداء من الأحد؟"
+    },
+    {
+      "id": "room_availability-07-en",
+      "intent": "room_availability",
+      "language": "en",
+      "scenario_id": "room_availability-07",
+      "split": "validation",
+      "text": "Can I stay three nights starting Sunday?"
+    },
+    {
+      "id": "room_availability-08-ar",
+      "intent": "room_availability",
+      "language": "ar",
+      "scenario_id": "room_availability-08",
+      "split": "validation",
+      "text": "هل لديكم غرفة شاغرة لنزيل واحد؟"
+    },
+    {
+      "id": "room_availability-08-en",
+      "intent": "room_availability",
+      "language": "en",
+      "scenario_id": "room_availability-08",
+      "split": "validation",
+      "text": "Do you have a vacant room for one guest?"
+    },
+    {
+      "id": "room_availability-09-ar",
+      "intent": "room_availability",
+      "language": "ar",
+      "scenario_id": "room_availability-09",
+      "split": "test",
+      "text": "تحقق من غرفة متاحة لشهر العسل في أيلول"
+    },
+    {
+      "id": "room_availability-09-en",
+      "intent": "room_availability",
+      "language": "en",
+      "scenario_id": "room_availability-09",
+      "split": "test",
+      "text": "Check room availability for a September honeymoon"
+    },
+    {
+      "id": "room_availability-10-ar",
+      "intent": "room_availability",
+      "language": "ar",
+      "scenario_id": "room_availability-10",
+      "split": "test",
+      "text": "هل بقيت أي غرف للغد؟"
+    },
+    {
+      "id": "room_availability-10-en",
+      "intent": "room_availability",
+      "language": "en",
+      "scenario_id": "room_availability-10",
+      "split": "test",
+      "text": "Are any rooms left for tomorrow?"
+    },
+    {
+      "id": "room_availability-11-ar",
+      "intent": "room_availability",
+      "language": "ar",
+      "scenario_id": "room_availability-11",
+      "split": "test",
+      "text": "أحتاج غرفتين متاحتين لثلاثة بالغين"
+    },
+    {
+      "id": "room_availability-11-en",
+      "intent": "room_availability",
+      "language": "en",
+      "scenario_id": "room_availability-11",
+      "split": "test",
+      "text": "I need two available rooms for three adults"
+    },
+    {
+      "id": "room_availability-12-ar",
+      "intent": "room_availability",
+      "language": "ar",
+      "scenario_id": "room_availability-12",
+      "split": "test",
+      "text": "ما التوفر خلال عطلة العيد؟"
+    },
+    {
+      "id": "room_availability-12-en",
+      "intent": "room_availability",
+      "language": "en",
+      "scenario_id": "room_availability-12",
+      "split": "test",
+      "text": "What availability do you have over the holiday?"
+    },
+    {
+      "id": "booking_lookup-01-ar",
+      "intent": "booking_lookup",
+      "language": "ar",
+      "scenario_id": "booking_lookup-01",
+      "split": "train",
+      "text": "أريد العثور على حجزي باستخدام الرقم"
+    },
+    {
+      "id": "booking_lookup-01-en",
+      "intent": "booking_lookup",
+      "language": "en",
+      "scenario_id": "booking_lookup-01",
+      "split": "train",
+      "text": "I want to find my booking by reference"
+    },
+    {
+      "id": "booking_lookup-02-ar",
+      "intent": "booking_lookup",
+      "language": "ar",
+      "scenario_id": "booking_lookup-02",
+      "split": "train",
+      "text": "اعرض لي تفاصيل الحجز NSH1001"
+    },
+    {
+      "id": "booking_lookup-02-en",
+      "intent": "booking_lookup",
+      "language": "en",
+      "scenario_id": "booking_lookup-02",
+      "split": "train",
+      "text": "Show me the details of booking NSH1001"
+    },
+    {
+      "id": "booking_lookup-03-ar",
+      "intent": "booking_lookup",
+      "language": "ar",
+      "scenario_id": "booking_lookup-03",
+      "split": "train",
+      "text": "هل حجزي مؤكد؟"
+    },
+    {
+      "id": "booking_lookup-03-en",
+      "intent": "booking_lookup",
+      "language": "en",
+      "scenario_id": "booking_lookup-03",
+      "split": "train",
+      "text": "Can you confirm whether my reservation exists?"
+    },
+    {
+      "id": "booking_lookup-04-ar",
+      "intent": "booking_lookup",
+      "language": "ar",
+      "scenario_id": "booking_lookup-04",
+      "split": "train",
+      "text": "ما تواريخ الإقامة المسجلة في حجزي؟"
+    },
+    {
+      "id": "booking_lookup-04-en",
+      "intent": "booking_lookup",
+      "language": "en",
+      "scenario_id": "booking_lookup-04",
+      "split": "train",
+      "text": "What stay dates are recorded on my booking?"
+    },
+    {
+      "id": "booking_lookup-05-ar",
+      "intent": "booking_lookup",
+      "language": "ar",
+      "scenario_id": "booking_lookup-05",
+      "split": "train",
+      "text": "أريد معرفة حالة الحجز الحالي"
+    },
+    {
+      "id": "booking_lookup-05-en",
+      "intent": "booking_lookup",
+      "language": "en",
+      "scenario_id": "booking_lookup-05",
+      "split": "train",
+      "text": "I need the status of my current booking"
+    },
+    {
+      "id": "booking_lookup-06-ar",
+      "intent": "booking_lookup",
+      "language": "ar",
+      "scenario_id": "booking_lookup-06",
+      "split": "train",
+      "text": "هل تم تعيين غرفة لحجزي؟"
+    },
+    {
+      "id": "booking_lookup-06-en",
+      "intent": "booking_lookup",
+      "language": "en",
+      "scenario_id": "booking_lookup-06",
+      "split": "train",
+      "text": "Has a room been assigned to my reservation?"
+    },
+    {
+      "id": "booking_lookup-07-ar",
+      "intent": "booking_lookup",
+      "language": "ar",
+      "scenario_id": "booking_lookup-07",
+      "split": "validation",
+      "text": "ساعدني في مراجعة بيانات حجزي"
+    },
+    {
+      "id": "booking_lookup-07-en",
+      "intent": "booking_lookup",
+      "language": "en",
+      "scenario_id": "booking_lookup-07",
+      "split": "validation",
+      "text": "Help me review my reservation details"
+    },
+    {
+      "id": "booking_lookup-08-ar",
+      "intent": "booking_lookup",
+      "language": "ar",
+      "scenario_id": "booking_lookup-08",
+      "split": "validation",
+      "text": "ابحث عن الحجز المرتبط بهذا المرجع"
+    },
+    {
+      "id": "booking_lookup-08-en",
+      "intent": "booking_lookup",
+      "language": "en",
+      "scenario_id": "booking_lookup-08",
+      "split": "validation",
+      "text": "Look up the reservation linked to this reference"
+    },
+    {
+      "id": "booking_lookup-09-ar",
+      "intent": "booking_lookup",
+      "language": "ar",
+      "scenario_id": "booking_lookup-09",
+      "split": "test",
+      "text": "تحقق من مرجع الحجز NSH2045"
+    },
+    {
+      "id": "booking_lookup-09-en",
+      "intent": "booking_lookup",
+      "language": "en",
+      "scenario_id": "booking_lookup-09",
+      "split": "test",
+      "text": "Check booking reference NSH2045"
+    },
+    {
+      "id": "booking_lookup-10-ar",
+      "intent": "booking_lookup",
+      "language": "ar",
+      "scenario_id": "booking_lookup-10",
+      "split": "test",
+      "text": "هل يوجد حجز مسجل باسمي؟"
+    },
+    {
+      "id": "booking_lookup-10-en",
+      "intent": "booking_lookup",
+      "language": "en",
+      "scenario_id": "booking_lookup-10",
+      "split": "test",
+      "text": "Is there a reservation registered for me?"
+    },
+    {
+      "id": "booking_lookup-11-ar",
+      "intent": "booking_lookup",
+      "language": "ar",
+      "scenario_id": "booking_lookup-11",
+      "split": "test",
+      "text": "ما رقم الغرفة المحجوزة لي؟"
+    },
+    {
+      "id": "booking_lookup-11-en",
+      "intent": "booking_lookup",
+      "language": "en",
+      "scenario_id": "booking_lookup-11",
+      "split": "test",
+      "text": "Which room number is assigned to my booking?"
+    },
+    {
+      "id": "booking_lookup-12-ar",
+      "intent": "booking_lookup",
+      "language": "ar",
+      "scenario_id": "booking_lookup-12",
+      "split": "test",
+      "text": "أظهر معلومات الوصول الموجودة في حجزي"
+    },
+    {
+      "id": "booking_lookup-12-en",
+      "intent": "booking_lookup",
+      "language": "en",
+      "scenario_id": "booking_lookup-12",
+      "split": "test",
+      "text": "Show the arrival information on my reservation"
+    },
+    {
+      "id": "room_service_request-01-ar",
+      "intent": "room_service_request",
+      "language": "ar",
+      "scenario_id": "room_service_request-01",
+      "split": "train",
+      "text": "أريد طلب وجبة إلى الغرفة"
+    },
+    {
+      "id": "room_service_request-01-en",
+      "intent": "room_service_request",
+      "language": "en",
+      "scenario_id": "room_service_request-01",
+      "split": "train",
+      "text": "I would like to order food to my room"
+    },
+    {
+      "id": "room_service_request-02-ar",
+      "intent": "room_service_request",
+      "language": "ar",
+      "scenario_id": "room_service_request-02",
+      "split": "train",
+      "text": "أرسلوا مناشف إضافية إلى غرفتي"
+    },
+    {
+      "id": "room_service_request-02-en",
+      "intent": "room_service_request",
+      "language": "en",
+      "scenario_id": "room_service_request-02",
+      "split": "train",
+      "text": "Please send extra towels to my room"
+    },
+    {
+      "id": "room_service_request-03-ar",
+      "intent": "room_service_request",
+      "language": "ar",
+      "scenario_id": "room_service_request-03",
+      "split": "train",
+      "text": "أحتاج خدمة تنظيف الغرفة"
+    },
+    {
+      "id": "room_service_request-03-en",
+      "intent": "room_service_request",
+      "language": "en",
+      "scenario_id": "room_service_request-03",
+      "split": "train",
+      "text": "I need housekeeping for my room"
+    },
+    {
+      "id": "room_service_request-04-ar",
+      "intent": "room_service_request",
+      "language": "ar",
+      "scenario_id": "room_service_request-04",
+      "split": "train",
+      "text": "هل يمكن إحضار مياه شرب؟"
+    },
+    {
+      "id": "room_service_request-04-en",
+      "intent": "room_service_request",
+      "language": "en",
+      "scenario_id": "room_service_request-04",
+      "split": "train",
+      "text": "Could you bring drinking water to the room?"
+    },
+    {
+      "id": "room_service_request-05-ar",
+      "intent": "room_service_request",
+      "language": "ar",
+      "scenario_id": "room_service_request-05",
+      "split": "train",
+      "text": "أريد وسادتين إضافيتين"
+    },
+    {
+      "id": "room_service_request-05-en",
+      "intent": "room_service_request",
+      "language": "en",
+      "scenario_id": "room_service_request-05",
+      "split": "train",
+      "text": "Please deliver two extra pillows"
+    },
+    {
+      "id": "room_service_request-06-ar",
+      "intent": "room_service_request",
+      "language": "ar",
+      "scenario_id": "room_service_request-06",
+      "split": "train",
+      "text": "أرسلوا الإفطار إلى الغرفة"
+    },
+    {
+      "id": "room_service_request-06-en",
+      "intent": "room_service_request",
+      "language": "en",
+      "scenario_id": "room_service_request-06",
+      "split": "train",
+      "text": "Send breakfast to my room"
+    },
+    {
+      "id": "room_service_request-07-ar",
+      "intent": "room_service_request",
+      "language": "ar",
+      "scenario_id": "room_service_request-07",
+      "split": "validation",
+      "text": "نحتاج مستلزمات استحمام إضافية"
+    },
+    {
+      "id": "room_service_request-07-en",
+      "intent": "room_service_request",
+      "language": "en",
+      "scenario_id": "room_service_request-07",
+      "split": "validation",
+      "text": "We need additional toiletries"
+    },
+    {
+      "id": "room_service_request-08-ar",
+      "intent": "room_service_request",
+      "language": "ar",
+      "scenario_id": "room_service_request-08",
+      "split": "validation",
+      "text": "يرجى تعبئة الميني بار"
+    },
+    {
+      "id": "room_service_request-08-en",
+      "intent": "room_service_request",
+      "language": "en",
+      "scenario_id": "room_service_request-08",
+      "split": "validation",
+      "text": "Please restock the minibar"
+    },
+    {
+      "id": "room_service_request-09-ar",
+      "intent": "room_service_request",
+      "language": "ar",
+      "scenario_id": "room_service_request-09",
+      "split": "test",
+      "text": "أود طلب العشاء إلى الغرفة 305"
+    },
+    {
+      "id": "room_service_request-09-en",
+      "intent": "room_service_request",
+      "language": "en",
+      "scenario_id": "room_service_request-09",
+      "split": "test",
+      "text": "I want dinner delivered to room 305"
+    },
+    {
+      "id": "room_service_request-10-ar",
+      "intent": "room_service_request",
+      "language": "ar",
+      "scenario_id": "room_service_request-10",
+      "split": "test",
+      "text": "أرسلوا بطانية إضافية من فضلكم"
+    },
+    {
+      "id": "room_service_request-10-en",
+      "intent": "room_service_request",
+      "language": "en",
+      "scenario_id": "room_service_request-10",
+      "split": "test",
+      "text": "Please send an extra blanket"
+    },
+    {
+      "id": "room_service_request-11-ar",
+      "intent": "room_service_request",
+      "language": "ar",
+      "scenario_id": "room_service_request-11",
+      "split": "test",
+      "text": "أريد ترتيب تنظيف غرفتي الآن"
+    },
+    {
+      "id": "room_service_request-11-en",
+      "intent": "room_service_request",
+      "language": "en",
+      "scenario_id": "room_service_request-11",
+      "split": "test",
+      "text": "I want my room cleaned now"
+    },
+    {
+      "id": "room_service_request-12-ar",
+      "intent": "room_service_request",
+      "language": "ar",
+      "scenario_id": "room_service_request-12",
+      "split": "test",
+      "text": "هل يمكن توفير سرير طفل للغرفة؟"
+    },
+    {
+      "id": "room_service_request-12-en",
+      "intent": "room_service_request",
+      "language": "en",
+      "scenario_id": "room_service_request-12",
+      "split": "test",
+      "text": "Can you provide a baby crib for the room?"
+    },
+    {
+      "id": "maintenance_request-01-ar",
+      "intent": "maintenance_request",
+      "language": "ar",
+      "scenario_id": "maintenance_request-01",
+      "split": "train",
+      "text": "المكيف في الغرفة لا يعمل"
+    },
+    {
+      "id": "maintenance_request-01-en",
+      "intent": "maintenance_request",
+      "language": "en",
+      "scenario_id": "maintenance_request-01",
+      "split": "train",
+      "text": "The air conditioner in my room is not working"
+    },
+    {
+      "id": "maintenance_request-02-ar",
+      "intent": "maintenance_request",
+      "language": "ar",
+      "scenario_id": "maintenance_request-02",
+      "split": "train",
+      "text": "يوجد تسريب مياه من الصنبور"
+    },
+    {
+      "id": "maintenance_request-02-en",
+      "intent": "maintenance_request",
+      "language": "en",
+      "scenario_id": "maintenance_request-02",
+      "split": "train",
+      "text": "Water is leaking from the faucet"
+    },
+    {
+      "id": "maintenance_request-03-ar",
+      "intent": "maintenance_request",
+      "language": "ar",
+      "scenario_id": "maintenance_request-03",
+      "split": "train",
+      "text": "التلفاز معطل وأحتاج فني صيانة"
+    },
+    {
+      "id": "maintenance_request-03-en",
+      "intent": "maintenance_request",
+      "language": "en",
+      "scenario_id": "maintenance_request-03",
+      "split": "train",
+      "text": "The television is broken and needs maintenance"
+    },
+    {
+      "id": "maintenance_request-04-ar",
+      "intent": "maintenance_request",
+      "language": "ar",
+      "scenario_id": "maintenance_request-04",
+      "split": "train",
+      "text": "مصباح الغرفة لا يضيء"
+    },
+    {
+      "id": "maintenance_request-04-en",
+      "intent": "maintenance_request",
+      "language": "en",
+      "scenario_id": "maintenance_request-04",
+      "split": "train",
+      "text": "The room light will not turn on"
+    },
+    {
+      "id": "maintenance_request-05-ar",
+      "intent": "maintenance_request",
+      "language": "ar",
+      "scenario_id": "maintenance_request-05",
+      "split": "train",
+      "text": "الخزنة الإلكترونية لا تفتح"
+    },
+    {
+      "id": "maintenance_request-05-en",
+      "intent": "maintenance_request",
+      "language": "en",
+      "scenario_id": "maintenance_request-05",
+      "split": "train",
+      "text": "The electronic safe will not open"
+    },
+    {
+      "id": "maintenance_request-06-ar",
+      "intent": "maintenance_request",
+      "language": "ar",
+      "scenario_id": "maintenance_request-06",
+      "split": "train",
+      "text": "الدش في الحمام لا يعمل"
+    },
+    {
+      "id": "maintenance_request-06-en",
+      "intent": "maintenance_request",
+      "language": "en",
+      "scenario_id": "maintenance_request-06",
+      "split": "train",
+      "text": "The bathroom shower is not working"
+    },
+    {
+      "id": "maintenance_request-07-ar",
+      "intent": "maintenance_request",
+      "language": "ar",
+      "scenario_id": "maintenance_request-07",
+      "split": "validation",
+      "text": "ثلاجة الغرفة لا تبرد"
+    },
+    {
+      "id": "maintenance_request-07-en",
+      "intent": "maintenance_request",
+      "language": "en",
+      "scenario_id": "maintenance_request-07",
+      "split": "validation",
+      "text": "The room refrigerator is not cooling"
+    },
+    {
+      "id": "maintenance_request-08-ar",
+      "intent": "maintenance_request",
+      "language": "ar",
+      "scenario_id": "maintenance_request-08",
+      "split": "validation",
+      "text": "قفل باب الغرفة فيه عطل"
+    },
+    {
+      "id": "maintenance_request-08-en",
+      "intent": "maintenance_request",
+      "language": "en",
+      "scenario_id": "maintenance_request-08",
+      "split": "validation",
+      "text": "The room door lock is malfunctioning"
+    },
+    {
+      "id": "maintenance_request-09-ar",
+      "intent": "maintenance_request",
+      "language": "ar",
+      "scenario_id": "maintenance_request-09",
+      "split": "test",
+      "text": "لا توجد مياه ساخنة في الحمام"
+    },
+    {
+      "id": "maintenance_request-09-en",
+      "intent": "maintenance_request",
+      "language": "en",
+      "scenario_id": "maintenance_request-09",
+      "split": "test",
+      "text": "There is no hot water in the bathroom"
+    },
+    {
+      "id": "maintenance_request-10-ar",
+      "intent": "maintenance_request",
+      "language": "ar",
+      "scenario_id": "maintenance_request-10",
+      "split": "test",
+      "text": "نافذة الغرفة مكسورة"
+    },
+    {
+      "id": "maintenance_request-10-en",
+      "intent": "maintenance_request",
+      "language": "en",
+      "scenario_id": "maintenance_request-10",
+      "split": "test",
+      "text": "The room window is broken"
+    },
+    {
+      "id": "maintenance_request-11-ar",
+      "intent": "maintenance_request",
+      "language": "ar",
+      "scenario_id": "maintenance_request-11",
+      "split": "test",
+      "text": "مقبس الكهرباء لا يعمل"
+    },
+    {
+      "id": "maintenance_request-11-en",
+      "intent": "maintenance_request",
+      "language": "en",
+      "scenario_id": "maintenance_request-11",
+      "split": "test",
+      "text": "The electrical outlet is not working"
+    },
+    {
+      "id": "maintenance_request-12-ar",
+      "intent": "maintenance_request",
+      "language": "ar",
+      "scenario_id": "maintenance_request-12",
+      "split": "test",
+      "text": "المرحاض مسدود ونحتاج صيانة"
+    },
+    {
+      "id": "maintenance_request-12-en",
+      "intent": "maintenance_request",
+      "language": "en",
+      "scenario_id": "maintenance_request-12",
+      "split": "test",
+      "text": "The toilet is clogged and needs repair"
+    },
+    {
+      "id": "service_request_status-01-ar",
+      "intent": "service_request_status",
+      "language": "ar",
+      "scenario_id": "service_request_status-01",
+      "split": "train",
+      "text": "أريد تتبع طلب الخدمة الخاص بي"
+    },
+    {
+      "id": "service_request_status-01-en",
+      "intent": "service_request_status",
+      "language": "en",
+      "scenario_id": "service_request_status-01",
+      "split": "train",
+      "text": "I want to track my service request"
+    },
+    {
+      "id": "service_request_status-02-ar",
+      "intent": "service_request_status",
+      "language": "ar",
+      "scenario_id": "service_request_status-02",
+      "split": "train",
+      "text": "ما حالة طلب الصيانة SR100؟"
+    },
+    {
+      "id": "service_request_status-02-en",
+      "intent": "service_request_status",
+      "language": "en",
+      "scenario_id": "service_request_status-02",
+      "split": "train",
+      "text": "What is the status of maintenance request SR100?"
+    },
+    {
+      "id": "service_request_status-03-ar",
+      "intent": "service_request_status",
+      "language": "ar",
+      "scenario_id": "service_request_status-03",
+      "split": "train",
+      "text": "أين وصل طلب خدمة الغرف؟"
+    },
+    {
+      "id": "service_request_status-03-en",
+      "intent": "service_request_status",
+      "language": "en",
+      "scenario_id": "service_request_status-03",
+      "split": "train",
+      "text": "What is happening with my room service request?"
+    },
+    {
+      "id": "service_request_status-04-ar",
+      "intent": "service_request_status",
+      "language": "ar",
+      "scenario_id": "service_request_status-04",
+      "split": "train",
+      "text": "هل تم إنجاز الطلب الذي قدمته؟"
+    },
+    {
+      "id": "service_request_status-04-en",
+      "intent": "service_request_status",
+      "language": "en",
+      "scenario_id": "service_request_status-04",
+      "split": "train",
+      "text": "Has the request I submitted been completed?"
+    },
+    {
+      "id": "service_request_status-05-ar",
+      "intent": "service_request_status",
+      "language": "ar",
+      "scenario_id": "service_request_status-05",
+      "split": "train",
+      "text": "أريد متابعة البلاغ السابق"
+    },
+    {
+      "id": "service_request_status-05-en",
+      "intent": "service_request_status",
+      "language": "en",
+      "scenario_id": "service_request_status-05",
+      "split": "train",
+      "text": "I want to follow up on my previous request"
+    },
+    {
+      "id": "service_request_status-06-ar",
+      "intent": "service_request_status",
+      "language": "ar",
+      "scenario_id": "service_request_status-06",
+      "split": "train",
+      "text": "أعطني آخر تحديث على طلب الخدمة"
+    },
+    {
+      "id": "service_request_status-06-en",
+      "intent": "service_request_status",
+      "language": "en",
+      "scenario_id": "service_request_status-06",
+      "split": "train",
+      "text": "Give me the latest update on my service request"
+    },
+    {
+      "id": "service_request_status-07-ar",
+      "intent": "service_request_status",
+      "language": "ar",
+      "scenario_id": "service_request_status-07",
+      "split": "validation",
+      "text": "كم بقي لوصول عامل الصيانة؟"
+    },
+    {
+      "id": "service_request_status-07-en",
+      "intent": "service_request_status",
+      "language": "en",
+      "scenario_id": "service_request_status-07",
+      "split": "validation",
+      "text": "How long until maintenance arrives for my request?"
+    },
+    {
+      "id": "service_request_status-08-ar",
+      "intent": "service_request_status",
+      "language": "ar",
+      "scenario_id": "service_request_status-08",
+      "split": "validation",
+      "text": "هل ما زال طلبي قيد الانتظار؟"
+    },
+    {
+      "id": "service_request_status-08-en",
+      "intent": "service_request_status",
+      "language": "en",
+      "scenario_id": "service_request_status-08",
+      "split": "validation",
+      "text": "Is my service request still pending?"
+    },
+    {
+      "id": "service_request_status-09-ar",
+      "intent": "service_request_status",
+      "language": "ar",
+      "scenario_id": "service_request_status-09",
+      "split": "test",
+      "text": "هل الفني قادم لمعالجة الطلب؟"
+    },
+    {
+      "id": "service_request_status-09-en",
+      "intent": "service_request_status",
+      "language": "en",
+      "scenario_id": "service_request_status-09",
+      "split": "test",
+      "text": "Is the technician coming for my request?"
+    },
+    {
+      "id": "service_request_status-10-ar",
+      "intent": "service_request_status",
+      "language": "ar",
+      "scenario_id": "service_request_status-10",
+      "split": "test",
+      "text": "تحقق من حالة رمز الطلب SR245"
+    },
+    {
+      "id": "service_request_status-10-en",
+      "intent": "service_request_status",
+      "language": "en",
+      "scenario_id": "service_request_status-10",
+      "split": "test",
+      "text": "Check the status of request code SR245"
+    },
+    {
+      "id": "service_request_status-11-ar",
+      "intent": "service_request_status",
+      "language": "ar",
+      "scenario_id": "service_request_status-11",
+      "split": "test",
+      "text": "هل اكتملت خدمة التنظيف التي طلبتها؟"
+    },
+    {
+      "id": "service_request_status-11-en",
+      "intent": "service_request_status",
+      "language": "en",
+      "scenario_id": "service_request_status-11",
+      "split": "test",
+      "text": "Was my housekeeping request completed?"
+    },
+    {
+      "id": "service_request_status-12-ar",
+      "intent": "service_request_status",
+      "language": "ar",
+      "scenario_id": "service_request_status-12",
+      "split": "test",
+      "text": "أحتاج تحديثاً عن طلب المناشف"
+    },
+    {
+      "id": "service_request_status-12-en",
+      "intent": "service_request_status",
+      "language": "en",
+      "scenario_id": "service_request_status-12",
+      "split": "test",
+      "text": "I need a status update on my towel request"
+    },
+    {
+      "id": "human_escalation-01-ar",
+      "intent": "human_escalation",
+      "language": "ar",
+      "scenario_id": "human_escalation-01",
+      "split": "train",
+      "text": "أريد التحدث مع موظف حقيقي"
+    },
+    {
+      "id": "human_escalation-01-en",
+      "intent": "human_escalation",
+      "language": "en",
+      "scenario_id": "human_escalation-01",
+      "split": "train",
+      "text": "I want to speak with a human agent"
+    },
+    {
+      "id": "human_escalation-02-ar",
+      "intent": "human_escalation",
+      "language": "ar",
+      "scenario_id": "human_escalation-02",
+      "split": "train",
+      "text": "حولني إلى موظف الاستقبال"
+    },
+    {
+      "id": "human_escalation-02-en",
+      "intent": "human_escalation",
+      "language": "en",
+      "scenario_id": "human_escalation-02",
+      "split": "train",
+      "text": "Transfer me to reception"
+    },
+    {
+      "id": "human_escalation-03-ar",
+      "intent": "human_escalation",
+      "language": "ar",
+      "scenario_id": "human_escalation-03",
+      "split": "train",
+      "text": "أحتاج التحدث مع مدير الفندق"
+    },
+    {
+      "id": "human_escalation-03-en",
+      "intent": "human_escalation",
+      "language": "en",
+      "scenario_id": "human_escalation-03",
+      "split": "train",
+      "text": "I need to speak to the hotel manager"
+    },
+    {
+      "id": "human_escalation-04-ar",
+      "intent": "human_escalation",
+      "language": "ar",
+      "scenario_id": "human_escalation-04",
+      "split": "train",
+      "text": "لدي شكوى وأريد شخصاً مسؤولاً"
+    },
+    {
+      "id": "human_escalation-04-en",
+      "intent": "human_escalation",
+      "language": "en",
+      "scenario_id": "human_escalation-04",
+      "split": "train",
+      "text": "I have a complaint and want a responsible person"
+    },
+    {
+      "id": "human_escalation-05-ar",
+      "intent": "human_escalation",
+      "language": "ar",
+      "scenario_id": "human_escalation-05",
+      "split": "train",
+      "text": "اطلب من أحد الموظفين الاتصال بي"
+    },
+    {
+      "id": "human_escalation-05-en",
+      "intent": "human_escalation",
+      "language": "en",
+      "scenario_id": "human_escalation-05",
+      "split": "train",
+      "text": "Ask a staff member to call me"
+    },
+    {
+      "id": "human_escalation-06-ar",
+      "intent": "human_escalation",
+      "language": "ar",
+      "scenario_id": "human_escalation-06",
+      "split": "train",
+      "text": "أريد دعماً مباشراً من إنسان"
+    },
+    {
+      "id": "human_escalation-06-en",
+      "intent": "human_escalation",
+      "language": "en",
+      "scenario_id": "human_escalation-06",
+      "split": "train",
+      "text": "I need live support from a person"
+    },
+    {
+      "id": "human_escalation-07-ar",
+      "intent": "human_escalation",
+      "language": "ar",
+      "scenario_id": "human_escalation-07",
+      "split": "validation",
+      "text": "هل يمكنك تحويلي إلى قسم خدمة العملاء؟"
+    },
+    {
+      "id": "human_escalation-07-en",
+      "intent": "human_escalation",
+      "language": "en",
+      "scenario_id": "human_escalation-07",
+      "split": "validation",
+      "text": "Can you transfer me to customer service?"
+    },
+    {
+      "id": "human_escalation-08-ar",
+      "intent": "human_escalation",
+      "language": "ar",
+      "scenario_id": "human_escalation-08",
+      "split": "validation",
+      "text": "لا أريد روبوتاً أريد شخصاً"
+    },
+    {
+      "id": "human_escalation-08-en",
+      "intent": "human_escalation",
+      "language": "en",
+      "scenario_id": "human_escalation-08",
+      "split": "validation",
+      "text": "I do not want a bot; I want a real person"
+    },
+    {
+      "id": "human_escalation-09-ar",
+      "intent": "human_escalation",
+      "language": "ar",
+      "scenario_id": "human_escalation-09",
+      "split": "test",
+      "text": "أريد رفع الموضوع إلى المشرف"
+    },
+    {
+      "id": "human_escalation-09-en",
+      "intent": "human_escalation",
+      "language": "en",
+      "scenario_id": "human_escalation-09",
+      "split": "test",
+      "text": "I want to escalate this to a supervisor"
+    },
+    {
+      "id": "human_escalation-10-ar",
+      "intent": "human_escalation",
+      "language": "ar",
+      "scenario_id": "human_escalation-10",
+      "split": "test",
+      "text": "اجعل أحد موظفي الفندق يكلمني"
+    },
+    {
+      "id": "human_escalation-10-en",
+      "intent": "human_escalation",
+      "language": "en",
+      "scenario_id": "human_escalation-10",
+      "split": "test",
+      "text": "Have a hotel staff member talk to me"
+    },
+    {
+      "id": "human_escalation-11-ar",
+      "intent": "human_escalation",
+      "language": "ar",
+      "scenario_id": "human_escalation-11",
+      "split": "test",
+      "text": "أحتاج مساعدة بشرية عاجلة"
+    },
+    {
+      "id": "human_escalation-11-en",
+      "intent": "human_escalation",
+      "language": "en",
+      "scenario_id": "human_escalation-11",
+      "split": "test",
+      "text": "I need urgent human assistance"
+    },
+    {
+      "id": "human_escalation-12-ar",
+      "intent": "human_escalation",
+      "language": "ar",
+      "scenario_id": "human_escalation-12",
+      "split": "test",
+      "text": "اربطني بممثل خدمة وليس روبوتاً"
+    },
+    {
+      "id": "human_escalation-12-en",
+      "intent": "human_escalation",
+      "language": "en",
+      "scenario_id": "human_escalation-12",
+      "split": "test",
+      "text": "Connect me with a service representative, not a bot"
+    },
+    {
+      "id": "greeting_smalltalk-01-ar",
+      "intent": "greeting_smalltalk",
+      "language": "ar",
+      "scenario_id": "greeting_smalltalk-01",
+      "split": "train",
+      "text": "مرحبا"
+    },
+    {
+      "id": "greeting_smalltalk-01-en",
+      "intent": "greeting_smalltalk",
+      "language": "en",
+      "scenario_id": "greeting_smalltalk-01",
+      "split": "train",
+      "text": "Hello"
+    },
+    {
+      "id": "greeting_smalltalk-02-ar",
+      "intent": "greeting_smalltalk",
+      "language": "ar",
+      "scenario_id": "greeting_smalltalk-02",
+      "split": "train",
+      "text": "صباح الخير"
+    },
+    {
+      "id": "greeting_smalltalk-02-en",
+      "intent": "greeting_smalltalk",
+      "language": "en",
+      "scenario_id": "greeting_smalltalk-02",
+      "split": "train",
+      "text": "Good morning"
+    },
+    {
+      "id": "greeting_smalltalk-03-ar",
+      "intent": "greeting_smalltalk",
+      "language": "ar",
+      "scenario_id": "greeting_smalltalk-03",
+      "split": "train",
+      "text": "كيف حالك اليوم؟"
+    },
+    {
+      "id": "greeting_smalltalk-03-en",
+      "intent": "greeting_smalltalk",
+      "language": "en",
+      "scenario_id": "greeting_smalltalk-03",
+      "split": "train",
+      "text": "How are you today?"
+    },
+    {
+      "id": "greeting_smalltalk-04-ar",
+      "intent": "greeting_smalltalk",
+      "language": "ar",
+      "scenario_id": "greeting_smalltalk-04",
+      "split": "train",
+      "text": "مساء الخير يا مساعد الفندق"
+    },
+    {
+      "id": "greeting_smalltalk-04-en",
+      "intent": "greeting_smalltalk",
+      "language": "en",
+      "scenario_id": "greeting_smalltalk-04",
+      "split": "train",
+      "text": "Good evening, hotel assistant"
+    },
+    {
+      "id": "greeting_smalltalk-05-ar",
+      "intent": "greeting_smalltalk",
+      "language": "ar",
+      "scenario_id": "greeting_smalltalk-05",
+      "split": "train",
+      "text": "شكراً جزيلاً لمساعدتك"
+    },
+    {
+      "id": "greeting_smalltalk-05-en",
+      "intent": "greeting_smalltalk",
+      "language": "en",
+      "scenario_id": "greeting_smalltalk-05",
+      "split": "train",
+      "text": "Thank you very much for your help"
+    },
+    {
+      "id": "greeting_smalltalk-06-ar",
+      "intent": "greeting_smalltalk",
+      "language": "ar",
+      "scenario_id": "greeting_smalltalk-06",
+      "split": "train",
+      "text": "إلى اللقاء"
+    },
+    {
+      "id": "greeting_smalltalk-06-en",
+      "intent": "greeting_smalltalk",
+      "language": "en",
+      "scenario_id": "greeting_smalltalk-06",
+      "split": "train",
+      "text": "Goodbye"
+    },
+    {
+      "id": "greeting_smalltalk-07-ar",
+      "intent": "greeting_smalltalk",
+      "language": "ar",
+      "scenario_id": "greeting_smalltalk-07",
+      "split": "validation",
+      "text": "سعيد بالتحدث معك"
+    },
+    {
+      "id": "greeting_smalltalk-07-en",
+      "intent": "greeting_smalltalk",
+      "language": "en",
+      "scenario_id": "greeting_smalltalk-07",
+      "split": "validation",
+      "text": "Nice to meet you"
+    },
+    {
+      "id": "greeting_smalltalk-08-ar",
+      "intent": "greeting_smalltalk",
+      "language": "ar",
+      "scenario_id": "greeting_smalltalk-08",
+      "split": "validation",
+      "text": "يعطيك العافية وشكراً"
+    },
+    {
+      "id": "greeting_smalltalk-08-en",
+      "intent": "greeting_smalltalk",
+      "language": "en",
+      "scenario_id": "greeting_smalltalk-08",
+      "split": "validation",
+      "text": "Thanks, I appreciate it"
+    },
+    {
+      "id": "greeting_smalltalk-09-ar",
+      "intent": "greeting_smalltalk",
+      "language": "ar",
+      "scenario_id": "greeting_smalltalk-09",
+      "split": "test",
+      "text": "تصبح على خير"
+    },
+    {
+      "id": "greeting_smalltalk-09-en",
+      "intent": "greeting_smalltalk",
+      "language": "en",
+      "scenario_id": "greeting_smalltalk-09",
+      "split": "test",
+      "text": "Good night"
+    },
+    {
+      "id": "greeting_smalltalk-10-ar",
+      "intent": "greeting_smalltalk",
+      "language": "ar",
+      "scenario_id": "greeting_smalltalk-10",
+      "split": "test",
+      "text": "أهلاً يا صديقي"
+    },
+    {
+      "id": "greeting_smalltalk-10-en",
+      "intent": "greeting_smalltalk",
+      "language": "en",
+      "scenario_id": "greeting_smalltalk-10",
+      "split": "test",
+      "text": "Hey there"
+    },
+    {
+      "id": "greeting_smalltalk-11-ar",
+      "intent": "greeting_smalltalk",
+      "language": "ar",
+      "scenario_id": "greeting_smalltalk-11",
+      "split": "test",
+      "text": "السلام عليكم ورحمة الله"
+    },
+    {
+      "id": "greeting_smalltalk-11-en",
+      "intent": "greeting_smalltalk",
+      "language": "en",
+      "scenario_id": "greeting_smalltalk-11",
+      "split": "test",
+      "text": "Peace be upon you"
+    },
+    {
+      "id": "greeting_smalltalk-12-ar",
+      "intent": "greeting_smalltalk",
+      "language": "ar",
+      "scenario_id": "greeting_smalltalk-12",
+      "split": "test",
+      "text": "ممتن جداً لخدمتك"
+    },
+    {
+      "id": "greeting_smalltalk-12-en",
+      "intent": "greeting_smalltalk",
+      "language": "en",
+      "scenario_id": "greeting_smalltalk-12",
+      "split": "test",
+      "text": "I really appreciate your assistance"
+    },
+    {
+      "id": "unsupported-01-ar",
+      "intent": "unsupported",
+      "language": "ar",
+      "scenario_id": "unsupported-01",
+      "split": "train",
+      "text": "ما توقعات الطقس في أوروبا؟"
+    },
+    {
+      "id": "unsupported-01-en",
+      "intent": "unsupported",
+      "language": "en",
+      "scenario_id": "unsupported-01",
+      "split": "train",
+      "text": "What is the weather forecast in Europe?"
+    },
+    {
+      "id": "unsupported-02-ar",
+      "intent": "unsupported",
+      "language": "ar",
+      "scenario_id": "unsupported-02",
+      "split": "train",
+      "text": "احجز لي تذكرة طيران"
+    },
+    {
+      "id": "unsupported-02-en",
+      "intent": "unsupported",
+      "language": "en",
+      "scenario_id": "unsupported-02",
+      "split": "train",
+      "text": "Book an airline ticket for me"
+    },
+    {
+      "id": "unsupported-03-ar",
+      "intent": "unsupported",
+      "language": "ar",
+      "scenario_id": "unsupported-03",
+      "split": "train",
+      "text": "أعطني نصيحة لتداول العملات"
+    },
+    {
+      "id": "unsupported-03-en",
+      "intent": "unsupported",
+      "language": "en",
+      "scenario_id": "unsupported-03",
+      "split": "train",
+      "text": "Give me currency trading advice"
+    },
+    {
+      "id": "unsupported-04-ar",
+      "intent": "unsupported",
+      "language": "ar",
+      "scenario_id": "unsupported-04",
+      "split": "train",
+      "text": "شخّص لي هذه الأعراض الطبية"
+    },
+    {
+      "id": "unsupported-04-en",
+      "intent": "unsupported",
+      "language": "en",
+      "scenario_id": "unsupported-04",
+      "split": "train",
+      "text": "Diagnose these medical symptoms for me"
+    },
+    {
+      "id": "unsupported-05-ar",
+      "intent": "unsupported",
+      "language": "ar",
+      "scenario_id": "unsupported-05",
+      "split": "train",
+      "text": "حل لي واجب الرياضيات"
+    },
+    {
+      "id": "unsupported-05-en",
+      "intent": "unsupported",
+      "language": "en",
+      "scenario_id": "unsupported-05",
+      "split": "train",
+      "text": "Solve my mathematics homework"
+    },
+    {
+      "id": "unsupported-06-ar",
+      "intent": "unsupported",
+      "language": "ar",
+      "scenario_id": "unsupported-06",
+      "split": "train",
+      "text": "من سيفوز بكأس العالم؟"
+    },
+    {
+      "id": "unsupported-06-en",
+      "intent": "unsupported",
+      "language": "en",
+      "scenario_id": "unsupported-06",
+      "split": "train",
+      "text": "Who will win the World Cup?"
+    },
+    {
+      "id": "unsupported-07-ar",
+      "intent": "unsupported",
+      "language": "ar",
+      "scenario_id": "unsupported-07",
+      "split": "validation",
+      "text": "اكتب لي وصفة طبخ للمعكرونة"
+    },
+    {
+      "id": "unsupported-07-en",
+      "intent": "unsupported",
+      "language": "en",
+      "scenario_id": "unsupported-07",
+      "split": "validation",
+      "text": "Write me a pasta recipe"
+    },
+    {
+      "id": "unsupported-08-ar",
+      "intent": "unsupported",
+      "language": "ar",
+      "scenario_id": "unsupported-08",
+      "split": "validation",
+      "text": "ما رأيك في الانتخابات؟"
+    },
+    {
+      "id": "unsupported-08-en",
+      "intent": "unsupported",
+      "language": "en",
+      "scenario_id": "unsupported-08",
+      "split": "validation",
+      "text": "What do you think about the election?"
+    },
+    {
+      "id": "unsupported-09-ar",
+      "intent": "unsupported",
+      "language": "ar",
+      "scenario_id": "unsupported-09",
+      "split": "test",
+      "text": "ساعدني في شراء العملات الرقمية"
+    },
+    {
+      "id": "unsupported-09-en",
+      "intent": "unsupported",
+      "language": "en",
+      "scenario_id": "unsupported-09",
+      "split": "test",
+      "text": "Help me buy cryptocurrency"
+    },
+    {
+      "id": "unsupported-10-ar",
+      "intent": "unsupported",
+      "language": "ar",
+      "scenario_id": "unsupported-10",
+      "split": "test",
+      "text": "قدم لي استشارة قانونية لقضيتي"
+    },
+    {
+      "id": "unsupported-10-en",
+      "intent": "unsupported",
+      "language": "en",
+      "scenario_id": "unsupported-10",
+      "split": "test",
+      "text": "Give me legal advice for my court case"
+    },
+    {
+      "id": "unsupported-11-ar",
+      "intent": "unsupported",
+      "language": "ar",
+      "scenario_id": "unsupported-11",
+      "split": "test",
+      "text": "ترجم لي وثيقة طويلة لا علاقة لها بالفندق"
+    },
+    {
+      "id": "unsupported-11-en",
+      "intent": "unsupported",
+      "language": "en",
+      "scenario_id": "unsupported-11",
+      "split": "test",
+      "text": "Translate a long document unrelated to the hotel"
+    },
+    {
+      "id": "unsupported-12-ar",
+      "intent": "unsupported",
+      "language": "ar",
+      "scenario_id": "unsupported-12",
+      "split": "test",
+      "text": "ابحث لي عن متجر إلكتروني للملابس"
+    },
+    {
+      "id": "unsupported-12-en",
+      "intent": "unsupported",
+      "language": "en",
+      "scenario_id": "unsupported-12",
+      "split": "test",
+      "text": "Find me an online clothing store"
+    }
+  ],
+  "taxonomy_version": "intent-taxonomy-v1.0.0"
+}

@@ -1,0 +1,14 @@
+[Unit]
+Description=AI Hotel Support Bot verified MySQL backup
+Requires=docker.service
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+User=hotel-bot
+Group=hotel-bot
+WorkingDirectory=/opt/hotel-support-bot
+ExecStart=/bin/sh /opt/hotel-support-bot/scripts/backup.sh /var/backups/hotel-support-bot
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

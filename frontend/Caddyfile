@@ -1,0 +1,14 @@
+{
+	admin off
+	auto_https off
+}
+
+import /etc/caddy/app-routes.caddy
+
+http://:8090 {
+	respond /healthz 200
+}
+
+http://:8080 {
+	import app_routes
+}

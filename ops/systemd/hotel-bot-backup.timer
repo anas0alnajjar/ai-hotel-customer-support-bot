@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily AI Hotel Support Bot MySQL backup
+
+[Timer]
+OnCalendar=*-*-* 02:15:00
+Persistent=true
+RandomizedDelaySec=10m
+Unit=hotel-bot-backup.service
+
+[Install]
+WantedBy=timers.target

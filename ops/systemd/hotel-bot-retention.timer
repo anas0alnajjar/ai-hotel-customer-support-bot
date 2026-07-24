@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily AI Hotel Support Bot conversation retention cleanup
+
+[Timer]
+OnCalendar=*-*-* 03:15:00
+Persistent=true
+RandomizedDelaySec=10m
+Unit=hotel-bot-retention.service
+
+[Install]
+WantedBy=timers.target

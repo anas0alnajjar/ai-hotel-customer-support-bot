@@ -1,0 +1,47 @@
+"""Persistence schema exports."""
+
+from hotel_bot.persistence.base import Base
+from hotel_bot.persistence.models import (
+    AdminUser,
+    AuditEvent,
+    Booking,
+    ChannelUpdate,
+    Conversation,
+    Escalation,
+    EvaluationRun,
+    Feedback,
+    Guest,
+    IndexVersion,
+    KnowledgeChunk,
+    KnowledgeDocument,
+    KnowledgeRevision,
+    LLMRun,
+    Message,
+    Room,
+    RoomType,
+    ServiceRequest,
+    ToolExecution,
+)
+
+__all__ = [
+    "AdminUser",
+    "AuditEvent",
+    "Base",
+    "Booking",
+    "ChannelUpdate",
+    "Conversation",
+    "Escalation",
+    "EvaluationRun",
+    "Feedback",
+    "Guest",
+    "IndexVersion",
+    "KnowledgeChunk",
+    "KnowledgeDocument",
+    "KnowledgeRevision",
+    "LLMRun",
+    "Message",
+    "Room",
+    "RoomType",
+    "ServiceRequest",
+    "ToolExecution",
+]

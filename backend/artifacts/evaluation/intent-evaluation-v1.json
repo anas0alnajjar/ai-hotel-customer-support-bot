@@ -1,0 +1,202 @@
+{
+  "accepted_accuracy": 0.8846153846153846,
+  "accepted_count": 78,
+  "accuracy": 0.875,
+  "classifier_version": "nb-lexical-word-char-v1.1.0+intent-dataset-v1.0.0.332df985",
+  "confidence_margin_threshold": 0.15,
+  "confidence_threshold": 0.6,
+  "confusion_matrix": {
+    "booking_lookup": {
+      "booking_lookup": 8,
+      "greeting_smalltalk": 0,
+      "hotel_info": 0,
+      "human_escalation": 0,
+      "maintenance_request": 0,
+      "room_availability": 0,
+      "room_service_request": 0,
+      "room_types": 0,
+      "service_request_status": 0,
+      "unsupported": 0
+    },
+    "greeting_smalltalk": {
+      "booking_lookup": 0,
+      "greeting_smalltalk": 7,
+      "hotel_info": 0,
+      "human_escalation": 0,
+      "maintenance_request": 0,
+      "room_availability": 1,
+      "room_service_request": 0,
+      "room_types": 0,
+      "service_request_status": 0,
+      "unsupported": 0
+    },
+    "hotel_info": {
+      "booking_lookup": 1,
+      "greeting_smalltalk": 0,
+      "hotel_info": 6,
+      "human_escalation": 0,
+      "maintenance_request": 1,
+      "room_availability": 0,
+      "room_service_request": 0,
+      "room_types": 0,
+      "service_request_status": 0,
+      "unsupported": 0
+    },
+    "human_escalation": {
+      "booking_lookup": 0,
+      "greeting_smalltalk": 0,
+      "hotel_info": 0,
+      "human_escalation": 7,
+      "maintenance_request": 0,
+      "room_availability": 0,
+      "room_service_request": 0,
+      "room_types": 0,
+      "service_request_status": 1,
+      "unsupported": 0
+    },
+    "maintenance_request": {
+      "booking_lookup": 0,
+      "greeting_smalltalk": 0,
+      "hotel_info": 0,
+      "human_escalation": 0,
+      "maintenance_request": 8,
+      "room_availability": 0,
+      "room_service_request": 0,
+      "room_types": 0,
+      "service_request_status": 0,
+      "unsupported": 0
+    },
+    "room_availability": {
+      "booking_lookup": 0,
+      "greeting_smalltalk": 0,
+      "hotel_info": 0,
+      "human_escalation": 0,
+      "maintenance_request": 0,
+      "room_availability": 7,
+      "room_service_request": 0,
+      "room_types": 1,
+      "service_request_status": 0,
+      "unsupported": 0
+    },
+    "room_service_request": {
+      "booking_lookup": 0,
+      "greeting_smalltalk": 0,
+      "hotel_info": 0,
+      "human_escalation": 0,
+      "maintenance_request": 0,
+      "room_availability": 0,
+      "room_service_request": 8,
+      "room_types": 0,
+      "service_request_status": 0,
+      "unsupported": 0
+    },
+    "room_types": {
+      "booking_lookup": 0,
+      "greeting_smalltalk": 0,
+      "hotel_info": 0,
+      "human_escalation": 0,
+      "maintenance_request": 0,
+      "room_availability": 1,
+      "room_service_request": 0,
+      "room_types": 7,
+      "service_request_status": 0,
+      "unsupported": 0
+    },
+    "service_request_status": {
+      "booking_lookup": 0,
+      "greeting_smalltalk": 0,
+      "hotel_info": 0,
+      "human_escalation": 0,
+      "maintenance_request": 0,
+      "room_availability": 0,
+      "room_service_request": 1,
+      "room_types": 0,
+      "service_request_status": 7,
+      "unsupported": 0
+    },
+    "unsupported": {
+      "booking_lookup": 0,
+      "greeting_smalltalk": 1,
+      "hotel_info": 0,
+      "human_escalation": 1,
+      "maintenance_request": 0,
+      "room_availability": 1,
+      "room_service_request": 0,
+      "room_types": 0,
+      "service_request_status": 0,
+      "unsupported": 5
+    }
+  },
+  "coverage": 0.975,
+  "dataset_sha256": "332df9858773090a2bb3b7e1e91cb92a3f627bc4790415f3cca81688ec638970",
+  "dataset_version": "intent-dataset-v1.0.0",
+  "macro_f1": 0.8727680815916109,
+  "macro_precision": 0.8866666666666667,
+  "macro_recall": 0.875,
+  "per_intent": {
+    "booking_lookup": {
+      "f1": 0.9411764705882353,
+      "precision": 0.8888888888888888,
+      "recall": 1.0,
+      "support": 8
+    },
+    "greeting_smalltalk": {
+      "f1": 0.875,
+      "precision": 0.875,
+      "recall": 0.875,
+      "support": 8
+    },
+    "hotel_info": {
+      "f1": 0.8571428571428571,
+      "precision": 1.0,
+      "recall": 0.75,
+      "support": 8
+    },
+    "human_escalation": {
+      "f1": 0.875,
+      "precision": 0.875,
+      "recall": 0.875,
+      "support": 8
+    },
+    "maintenance_request": {
+      "f1": 0.9411764705882353,
+      "precision": 0.8888888888888888,
+      "recall": 1.0,
+      "support": 8
+    },
+    "room_availability": {
+      "f1": 0.7777777777777777,
+      "precision": 0.7,
+      "recall": 0.875,
+      "support": 8
+    },
+    "room_service_request": {
+      "f1": 0.9411764705882353,
+      "precision": 0.8888888888888888,
+      "recall": 1.0,
+      "support": 8
+    },
+    "room_types": {
+      "f1": 0.875,
+      "precision": 0.875,
+      "recall": 0.875,
+      "support": 8
+    },
+    "service_request_status": {
+      "f1": 0.875,
+      "precision": 0.875,
+      "recall": 0.875,
+      "support": 8
+    },
+    "unsupported": {
+      "f1": 0.7692307692307693,
+      "precision": 1.0,
+      "recall": 0.625,
+      "support": 8
+    }
+  },
+  "report_version": "intent-evaluation-v1.0.0",
+  "sample_count": 80,
+  "split": "test",
+  "taxonomy_version": "intent-taxonomy-v1.0.0"
+}

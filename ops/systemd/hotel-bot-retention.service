@@ -1,0 +1,12 @@
+[Unit]
+Description=AI Hotel Support Bot 90-day conversation cleanup
+Requires=docker.service
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+User=hotel-bot
+Group=hotel-bot
+WorkingDirectory=/opt/hotel-support-bot
+ExecStart=/usr/bin/docker compose -f compose.production.yaml --env-file .env.production run --rm backend python -m hotel_bot.retention
+Nice=10

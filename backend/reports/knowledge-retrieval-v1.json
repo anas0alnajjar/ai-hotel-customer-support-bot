@@ -1,0 +1,15 @@
+{
+  "dataset_version": "nour-al-sham-knowledge-v1.0.0",
+  "dataset_sha256": "1549cc8570c09e30b8a200d57fb3259e4c2a3560e6e285f3d60c55ff0a8ef946",
+  "embedding_model": "hashing-test-v1:384",
+  "sample_count": 44,
+  "top_k": 5,
+  "recall_at_k": 0.9772727272727273,
+  "top_1_accuracy": 0.8409090909090909,
+  "mean_reciprocal_rank": 0.8871212121212121,
+  "traceability_rate": 1.0,
+  "passed": true,
+  "failed_case_ids": [
+    "airport_details_ar"
+  ]
+}

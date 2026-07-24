@@ -1,0 +1,19 @@
+﻿{
+    "schema_version":  1,
+    "status":  "passed",
+    "measured_at_utc":  "2026-07-23T23:30:27.3391379Z",
+    "scope":  "local_reverse_proxy_liveness",
+    "endpoint":  "http://127.0.0.1:8080/api/v1/health/live",
+    "samples":  100,
+    "warmup_samples":  5,
+    "sequential_requests":  true,
+    "min_ms":  21.534,
+    "mean_ms":  35.479,
+    "p50_ms":  27.458,
+    "p95_ms":  61.728,
+    "p99_ms":  142.106,
+    "max_ms":  227.838,
+    "p95_target_ms":  2000,
+    "missing_correlation_ids":  0,
+    "limitation":  "This is a local reverse-proxy baseline, not public-network, Telegram, or Gemini latency."
+}

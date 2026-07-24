@@ -1,0 +1,206 @@
+{
+  "dataset_version": "nour-al-sham-knowledge-v1.0.0",
+  "hotel_code": "nour_al_sham_grand",
+  "documents": [
+    {
+      "key": "check_in_out_en",
+      "title": "Check-in and check-out times",
+      "language": "en",
+      "source_format": "plain_text",
+      "content": "Nour Al-Sham Grand Hotel check-in begins at 3:00 PM and check-out is by 12:00 noon. Early check-in and late check-out depend on room availability and may carry an additional fee. Luggage storage is complimentary on arrival and departure days."
+    },
+    {
+      "key": "check_in_out_ar",
+      "title": "مواعيد تسجيل الوصول والمغادرة",
+      "language": "ar",
+      "source_format": "plain_text",
+      "content": "يبدأ تسجيل الوصول في فندق نور الشام الكبير الساعة الثالثة بعد الظهر، وموعد تسجيل المغادرة هو الساعة الثانية عشرة ظهراً. يخضع الوصول المبكر والمغادرة المتأخرة لتوفر الغرف وقد تترتب عليهما رسوم إضافية. حفظ الأمتعة مجاني في يومي الوصول والمغادرة."
+    },
+    {
+      "key": "wifi_en",
+      "title": "Hotel Wi-Fi",
+      "language": "en",
+      "source_format": "plain_text",
+      "content": "Complimentary high-speed Wi-Fi is available in every guest room and all public areas. Guests connect to the NourAlSham-Guest network and enter the access code printed on the key-card sleeve. Reception provides connection support around the clock."
+    },
+    {
+      "key": "wifi_ar",
+      "title": "الإنترنت اللاسلكي في الفندق",
+      "language": "ar",
+      "source_format": "plain_text",
+      "content": "تتوفر خدمة واي فاي سريعة ومجانية في جميع الغرف والمرافق العامة. يتصل النزيل بشبكة NourAlSham-Guest ثم يُدخل رمز الدخول المطبوع على غلاف بطاقة الغرفة. يقدم الاستقبال مساعدة الاتصال على مدار الساعة."
+    },
+    {
+      "key": "breakfast_en",
+      "title": "Breakfast service",
+      "language": "en",
+      "source_format": "plain_text",
+      "content": "The Jasmine Restaurant serves an international and Syrian breakfast buffet daily from 6:30 AM until 10:30 AM. Breakfast is included only when stated in the booking package. Vegetarian, vegan, and gluten-aware choices are available when requested."
+    },
+    {
+      "key": "breakfast_ar",
+      "title": "خدمة الإفطار",
+      "language": "ar",
+      "source_format": "plain_text",
+      "content": "يقدم مطعم الياسمين بوفيه إفطار سورياً وعالمياً يومياً من الساعة السادسة والنصف حتى العاشرة والنصف صباحاً. يكون الإفطار مشمولاً فقط عندما تذكره باقة الحجز. تتوفر خيارات نباتية وخيارات تراعي الغلوتين عند الطلب."
+    },
+    {
+      "key": "parking_en",
+      "title": "Parking and electric charging",
+      "language": "en",
+      "source_format": "plain_text",
+      "content": "Secure underground parking is complimentary for registered hotel guests, subject to space availability. The garage entrance is on Al-Nasr Street and has a 2.1-metre height limit. Two electric-vehicle charging points are available and must be reserved through reception."
+    },
+    {
+      "key": "parking_ar",
+      "title": "مواقف السيارات والشحن الكهربائي",
+      "language": "ar",
+      "source_format": "plain_text",
+      "content": "يتوفر موقف سيارات آمن تحت الأرض مجاناً لنزلاء الفندق المسجلين حسب توفر الأماكن. يقع مدخل المرآب في شارع النصر ويبلغ حد الارتفاع مترين وعشرة سنتيمترات. تتوفر نقطتا شحن للسيارات الكهربائية ويجب حجزهما عبر الاستقبال."
+    },
+    {
+      "key": "pool_gym_en",
+      "title": "Swimming pool and fitness centre",
+      "language": "en",
+      "source_format": "plain_text",
+      "content": "The indoor heated swimming pool and fitness centre are open daily from 7:00 AM to 10:00 PM. Hotel guests enter with their room key at no charge. Children under 16 must be accompanied by an adult, and no lifeguard is on duty."
+    },
+    {
+      "key": "pool_gym_ar",
+      "title": "المسبح والنادي الرياضي",
+      "language": "ar",
+      "source_format": "plain_text",
+      "content": "يفتح المسبح الداخلي المدفأ والنادي الرياضي يومياً من الساعة السابعة صباحاً حتى العاشرة مساءً. يدخل نزلاء الفندق مجاناً باستخدام بطاقة الغرفة. يجب أن يرافق شخص بالغ الأطفال دون السادسة عشرة، ولا يوجد منقذ مناوب."
+    },
+    {
+      "key": "smoking_en",
+      "title": "Smoking policy",
+      "language": "en",
+      "source_format": "plain_text",
+      "content": "All guest rooms, balconies, restaurants, and indoor public areas are non-smoking. Smoking is permitted only in the signed outdoor area beside the garden entrance. A cleaning charge applies if smoking occurs in a room."
+    },
+    {
+      "key": "smoking_ar",
+      "title": "سياسة التدخين",
+      "language": "ar",
+      "source_format": "plain_text",
+      "content": "يُمنع التدخين في جميع غرف النزلاء والشرفات والمطاعم والمرافق العامة الداخلية. يُسمح بالتدخين فقط في المنطقة الخارجية المخصصة بجانب مدخل الحديقة. تُفرض رسوم تنظيف عند التدخين داخل الغرفة."
+    },
+    {
+      "key": "pets_en",
+      "title": "Pet policy",
+      "language": "en",
+      "source_format": "plain_text",
+      "content": "Pets are not accepted in guest rooms or hotel facilities. Trained service animals assisting a guest with a disability are accepted without a fee when reception is notified before arrival. Service animals must remain under the guest's control."
+    },
+    {
+      "key": "pets_ar",
+      "title": "سياسة الحيوانات الأليفة",
+      "language": "ar",
+      "source_format": "plain_text",
+      "content": "لا يُسمح بالحيوانات الأليفة في غرف النزلاء أو مرافق الفندق. تُقبل حيوانات الخدمة المدربة التي تساعد نزيلاً من ذوي الإعاقة دون رسوم عند إبلاغ الاستقبال قبل الوصول، ويجب أن تبقى تحت سيطرة النزيل."
+    },
+    {
+      "key": "room_service_en",
+      "title": "Room service dining",
+      "language": "en",
+      "source_format": "plain_text",
+      "content": "Room service dining is available daily from 6:00 AM until midnight. Guests can request the current bilingual menu through the hotel bot or scan the QR code in the room. Orders include the listed delivery charge, and allergy information should be provided before confirmation."
+    },
+    {
+      "key": "room_service_ar",
+      "title": "خدمة الطعام إلى الغرف",
+      "language": "ar",
+      "source_format": "plain_text",
+      "content": "تتوفر خدمة الطعام إلى الغرف يومياً من الساعة السادسة صباحاً حتى منتصف الليل. يمكن طلب قائمة الطعام الثنائية اللغة عبر روبوت الفندق أو مسح رمز الاستجابة السريعة في الغرفة. تتضمن الطلبات رسم التوصيل الموضح، ويجب ذكر معلومات الحساسية قبل التأكيد."
+    },
+    {
+      "key": "housekeeping_en",
+      "title": "Housekeeping and laundry",
+      "language": "en",
+      "source_format": "plain_text",
+      "content": "Daily housekeeping is normally provided between 9:00 AM and 4:00 PM. Guests may request a preferred cleaning window, extra towels, or toiletries. Laundry handed in before 9:00 AM is returned by 7:00 PM the same day, except on public holidays."
+    },
+    {
+      "key": "housekeeping_ar",
+      "title": "التنظيف والغسيل",
+      "language": "ar",
+      "source_format": "plain_text",
+      "content": "تُقدم خدمة تنظيف الغرف اليومية عادة بين الساعة التاسعة صباحاً والرابعة عصراً. يمكن للنزيل طلب وقت مفضل للتنظيف أو مناشف ومستلزمات إضافية. تُعاد الملابس المسلمة للغسيل قبل التاسعة صباحاً بحلول السابعة مساءً في اليوم نفسه باستثناء العطل الرسمية."
+    },
+    {
+      "key": "airport_transport_en",
+      "title": "Airport transfer",
+      "language": "en",
+      "source_format": "plain_text",
+      "content": "Private transfers between Damascus International Airport and the hotel can be arranged at least 24 hours in advance. The service is chargeable and requires the flight number, arrival time, and passenger count. The driver meets arriving guests in the public arrivals hall."
+    },
+    {
+      "key": "airport_transport_ar",
+      "title": "النقل من وإلى المطار",
+      "language": "ar",
+      "source_format": "plain_text",
+      "content": "يمكن ترتيب نقل خاص بين مطار دمشق الدولي والفندق قبل الموعد بأربع وعشرين ساعة على الأقل. الخدمة مأجورة وتتطلب رقم الرحلة ووقت الوصول وعدد الركاب. يستقبل السائق النزلاء القادمين في صالة الوصول العامة."
+    },
+    {
+      "key": "accessibility_en",
+      "title": "Accessibility facilities",
+      "language": "en",
+      "source_format": "plain_text",
+      "content": "The main entrance, reception, restaurants, meeting rooms, and two guest rooms are wheelchair accessible. Accessible rooms include roll-in showers and support rails. Guests should contact reception before booking to confirm the required accessibility features."
+    },
+    {
+      "key": "accessibility_ar",
+      "title": "مرافق سهولة الوصول",
+      "language": "ar",
+      "source_format": "plain_text",
+      "content": "يمكن الوصول بالكراسي المتحركة إلى المدخل الرئيسي والاستقبال والمطاعم وقاعات الاجتماعات وغرفتين للنزلاء. تحتوي الغرف المهيأة على دش دون عتبة وقضبان مساعدة. يجب التواصل مع الاستقبال قبل الحجز لتأكيد تجهيزات سهولة الوصول المطلوبة."
+    }
+  ],
+  "evaluation_cases": [
+    {"id": "checkin_time_en", "language": "en", "query": "What time does check-in begin?", "relevant_document_keys": ["check_in_out_en"]},
+    {"id": "checkout_luggage_en", "language": "en", "query": "Is luggage storage free after check-out?", "relevant_document_keys": ["check_in_out_en"]},
+    {"id": "checkin_time_ar", "language": "ar", "query": "متى يبدأ تسجيل الوصول؟", "relevant_document_keys": ["check_in_out_ar"]},
+    {"id": "checkout_luggage_ar", "language": "ar", "query": "هل حفظ الأمتعة مجاني بعد المغادرة؟", "relevant_document_keys": ["check_in_out_ar"]},
+    {"id": "wifi_network_en", "language": "en", "query": "Which guest Wi-Fi network should I connect to?", "relevant_document_keys": ["wifi_en"]},
+    {"id": "wifi_code_en", "language": "en", "query": "Where is the wireless access code printed?", "relevant_document_keys": ["wifi_en"]},
+    {"id": "wifi_network_ar", "language": "ar", "query": "ما اسم شبكة الواي فاي للنزلاء؟", "relevant_document_keys": ["wifi_ar"]},
+    {"id": "wifi_code_ar", "language": "ar", "query": "أين أجد رمز دخول الإنترنت؟", "relevant_document_keys": ["wifi_ar"]},
+    {"id": "breakfast_hours_en", "language": "en", "query": "What are the breakfast buffet hours?", "relevant_document_keys": ["breakfast_en"]},
+    {"id": "breakfast_vegan_en", "language": "en", "query": "Does breakfast have vegan choices?", "relevant_document_keys": ["breakfast_en"]},
+    {"id": "breakfast_hours_ar", "language": "ar", "query": "ما ساعات بوفيه الإفطار؟", "relevant_document_keys": ["breakfast_ar"]},
+    {"id": "breakfast_vegan_ar", "language": "ar", "query": "هل توجد خيارات إفطار نباتية؟", "relevant_document_keys": ["breakfast_ar"]},
+    {"id": "parking_free_en", "language": "en", "query": "Is underground parking complimentary for guests?", "relevant_document_keys": ["parking_en"]},
+    {"id": "parking_ev_en", "language": "en", "query": "Can I reserve an electric vehicle charging point?", "relevant_document_keys": ["parking_en"]},
+    {"id": "parking_free_ar", "language": "ar", "query": "هل موقف السيارات تحت الأرض مجاني؟", "relevant_document_keys": ["parking_ar"]},
+    {"id": "parking_ev_ar", "language": "ar", "query": "كيف أحجز نقطة شحن سيارة كهربائية؟", "relevant_document_keys": ["parking_ar"]},
+    {"id": "pool_hours_en", "language": "en", "query": "When does the indoor swimming pool close?", "relevant_document_keys": ["pool_gym_en"]},
+    {"id": "pool_children_en", "language": "en", "query": "Must children be accompanied at the pool?", "relevant_document_keys": ["pool_gym_en"]},
+    {"id": "pool_hours_ar", "language": "ar", "query": "متى يغلق المسبح الداخلي؟", "relevant_document_keys": ["pool_gym_ar"]},
+    {"id": "pool_children_ar", "language": "ar", "query": "هل يجب مرافقة الأطفال في المسبح؟", "relevant_document_keys": ["pool_gym_ar"]},
+    {"id": "smoking_area_en", "language": "en", "query": "Where is the permitted outdoor smoking area?", "relevant_document_keys": ["smoking_en"]},
+    {"id": "smoking_room_en", "language": "en", "query": "Are guest rooms non-smoking?", "relevant_document_keys": ["smoking_en"]},
+    {"id": "smoking_area_ar", "language": "ar", "query": "أين تقع منطقة التدخين الخارجية؟", "relevant_document_keys": ["smoking_ar"]},
+    {"id": "smoking_room_ar", "language": "ar", "query": "هل التدخين ممنوع داخل الغرفة؟", "relevant_document_keys": ["smoking_ar"]},
+    {"id": "pets_en", "language": "en", "query": "Are pets accepted in hotel rooms?", "relevant_document_keys": ["pets_en"]},
+    {"id": "service_animals_en", "language": "en", "query": "Do trained service animals pay a fee?", "relevant_document_keys": ["pets_en"]},
+    {"id": "pets_ar", "language": "ar", "query": "هل تسمحون بالحيوانات الأليفة في الغرف؟", "relevant_document_keys": ["pets_ar"]},
+    {"id": "service_animals_ar", "language": "ar", "query": "هل حيوانات الخدمة المدربة مجانية؟", "relevant_document_keys": ["pets_ar"]},
+    {"id": "room_service_hours_en", "language": "en", "query": "Until what time is room service dining available?", "relevant_document_keys": ["room_service_en"]},
+    {"id": "room_service_menu_en", "language": "en", "query": "How can I request the bilingual room service menu?", "relevant_document_keys": ["room_service_en"]},
+    {"id": "room_service_hours_ar", "language": "ar", "query": "حتى أي ساعة تتوفر خدمة الطعام إلى الغرف؟", "relevant_document_keys": ["room_service_ar"]},
+    {"id": "room_service_menu_ar", "language": "ar", "query": "كيف أطلب قائمة طعام الغرف؟", "relevant_document_keys": ["room_service_ar"]},
+    {"id": "housekeeping_hours_en", "language": "en", "query": "What are the daily housekeeping hours?", "relevant_document_keys": ["housekeeping_en"]},
+    {"id": "laundry_return_en", "language": "en", "query": "When is laundry returned if handed in before 9 AM?", "relevant_document_keys": ["housekeeping_en"]},
+    {"id": "housekeeping_hours_ar", "language": "ar", "query": "ما ساعات تنظيف الغرف اليومية؟", "relevant_document_keys": ["housekeeping_ar"]},
+    {"id": "laundry_return_ar", "language": "ar", "query": "متى تُعاد الملابس المسلمة للغسيل صباحاً؟", "relevant_document_keys": ["housekeeping_ar"]},
+    {"id": "airport_notice_en", "language": "en", "query": "How far in advance must an airport transfer be arranged?", "relevant_document_keys": ["airport_transport_en"]},
+    {"id": "airport_details_en", "language": "en", "query": "Which flight details are required for airport transport?", "relevant_document_keys": ["airport_transport_en"]},
+    {"id": "airport_notice_ar", "language": "ar", "query": "قبل كم ساعة يجب ترتيب النقل إلى المطار؟", "relevant_document_keys": ["airport_transport_ar"]},
+    {"id": "airport_details_ar", "language": "ar", "query": "ما معلومات الرحلة المطلوبة لخدمة المطار؟", "relevant_document_keys": ["airport_transport_ar"]},
+    {"id": "access_rooms_en", "language": "en", "query": "Are wheelchair accessible guest rooms available?", "relevant_document_keys": ["accessibility_en"]},
+    {"id": "access_shower_en", "language": "en", "query": "Do accessible rooms include roll-in showers?", "relevant_document_keys": ["accessibility_en"]},
+    {"id": "access_rooms_ar", "language": "ar", "query": "هل توجد غرف مهيأة للكراسي المتحركة؟", "relevant_document_keys": ["accessibility_ar"]},
+    {"id": "access_shower_ar", "language": "ar", "query": "هل تحتوي الغرف المهيأة على دش دون عتبة؟", "relevant_document_keys": ["accessibility_ar"]}
+  ]
+}

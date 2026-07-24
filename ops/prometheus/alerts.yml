@@ -1,0 +1,37 @@
+groups:
+  - name: hotel-support-api
+    rules:
+      - alert: HotelSupportApiDown
+        expr: up{job="hotel-support-api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: Hotel support API is unavailable
+          runbook: ops/runbook.md#api-or-database-unavailable
+
+      - alert: HotelSupportHighErrorRate
+        expr: |
+          sum(rate(hotel_http_requests_total{status_class=~"5.."}[5m]))
+          /
+          clamp_min(sum(rate(hotel_http_requests_total[5m])), 0.001)
+          > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: API 5xx rate is above five percent
+          runbook: ops/runbook.md#elevated-http-errors
+
+      - alert: HotelSupportP95LatencyHigh
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(hotel_http_request_duration_seconds_bucket[10m]))
+          ) > 10
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: API P95 latency exceeds the ten-second requirement
+          runbook: ops/runbook.md#high-latency

@@ -1,0 +1,23 @@
+﻿{
+    "schema_version":  1,
+    "status":  "passed",
+    "verified_at_utc":  "2026-07-24T00:05:05.7671834Z",
+    "step":  12,
+    "backend_container":  "36c0bb954ab0a57ad11e438d17f55808b1dd0e02bdc13cbcd2fa670df1fd4412",
+    "backend_image":  "sha256:b3d0ada38435d1f2e6dc752996f634171cf59bd2a2f013790b18455a75f368d1",
+    "frontend_container":  "59bdf9c2869a9e768a624a4f7d86423c9f4e47dd7b6f33c10ea084cf326dc9b3",
+    "frontend_image":  "sha256:71fcb7af2b106f5e8f6644b4e6362e70dee8becaffa326fe68d89f66e2ab3c3f",
+    "prometheus_config":  "passed",
+    "public_metrics_blocked":  true,
+    "security_headers":  "passed",
+    "hardened_containers":  "passed",
+    "performance_report":  "http-performance-20260724T000342Z.json",
+    "backup_manifest":  "hotel-bot-20260724T000343Z.manifest.json",
+    "restore_report":  "restore-rehearsal-20260724000347-24948.json",
+    "test_gate":  "verify-step-11",
+    "limitations":  [
+                        "Public DNS, TLS issuance, and Telegram webhook activation require the selected deployment host.",
+                        "Performance evidence is a local proxy baseline and excludes public-network and provider latency.",
+                        "Hotel operations are simulations and are not connected to a real PMS."
+                    ]
+}

@@ -1,0 +1,16 @@
+﻿{
+    "schema_version":  1,
+    "status":  "passed",
+    "started_at_utc":  "2026-07-23T23:30:35.8089108Z",
+    "finished_at_utc":  "2026-07-23T23:31:48.3426379Z",
+    "duration_seconds":  72.534,
+    "backup_manifest":  "hotel-bot-20260723T233032Z.manifest.json",
+    "backup_sha256":  "14d118f6d5c5c7a3e22a9b0241b3136450684000e07f1e141525873e52c756f0",
+    "restored_table_count":  20,
+    "alembic_version_rows":  1,
+    "knowledge_document_rows":  22,
+    "conversation_rows":  0,
+    "isolation":  "temporary_container_without_host_port_or_project_volume",
+    "authoritative_restore":  "mysql",
+    "derived_recovery":  "faiss_rebuild_required"
+}
