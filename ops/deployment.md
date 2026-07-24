@@ -43,3 +43,132 @@ Caddy obtains and renews certificates automatically when the domain resolves and
 - Monthly dependency/image review and credential-access review.
 
 Do not register the Telegram webhook until HTTPS, restore rehearsal, health checks, and the release gate all pass.
+
+## Hostinger Docker Manager behind Nginx Proxy Manager
+
+Use `compose.hostinger.yaml` only when the VPS already runs Nginx Proxy
+Manager. The standalone `compose.production.yaml` remains the Caddy/ACME
+deployment path and is intentionally unchanged.
+
+The Hostinger variant:
+
+- does not read `.env.production`;
+- runs the frontend Caddy container in HTTP-only mode;
+- publishes only the frontend on `${HOSTINGER_FRONTEND_HOST_PORT:-8088}`;
+- leaves MySQL, FastAPI, and Prometheus on the private Compose network;
+- applies Alembic migrations and idempotently seeds the fictional hotel before
+  starting FastAPI;
+- preserves the MySQL, FAISS, embedding-model, and Prometheus volumes; and
+- leaves Gemini, Telegram, and admin authentication disabled when their secret
+  values are empty.
+
+### 1. Create the Docker Manager project
+
+In hPanel, open the VPS, select **Docker Manager**, and create a project from
+the public GitHub repository:
+
+- Repository: `https://github.com/anas0alnajjar/ai-hotel-customer-support-bot`
+- Branch: `main`
+- Compose file: `compose.hostinger.yaml`
+
+If Docker Manager requests a direct Compose URL instead, use:
+
+`https://raw.githubusercontent.com/anas0alnajjar/ai-hotel-customer-support-bot/refs/heads/main/compose.hostinger.yaml`
+
+Do not select `compose.production.yaml` for this VPS.
+
+### 2. Set Docker Manager environment variables
+
+Set these values in the project environment before the first deployment:
+
+| Variable | Required value |
+| --- | --- |
+| `HOSTINGER_DB_PASSWORD` | A new independent random password; required before deployment |
+| `HOSTINGER_DB_ROOT_PASSWORD` | A different new random password; required before deployment |
+| `HOSTINGER_TRUSTED_HOSTS` | The public hostname followed by the Docker service name, for example `hotel.example.com,backend` |
+| `HOSTINGER_ADMIN_TOKEN_SECRET` | A random value of at least 32 characters; required before admin login is enabled |
+| `HOSTINGER_FRONTEND_HOST_PORT` | `8088`, unless that host port is already occupied |
+
+Generate each secret independently on a trusted machine. For example,
+`openssl rand -hex 32` produces a suitable 64-character value. Never place the
+generated values in Git, a Compose file, an issue, or a build log.
+
+The following non-secret defaults are safe and normally do not need changes:
+
+| Variable | Default |
+| --- | --- |
+| `DB_NAME` | `hotel_bot` |
+| `DB_USER` | `hotel_bot` |
+| `GEMINI_MODEL` | `gemini-2.5-flash` |
+| `CONVERSATION_RETENTION_DAYS` | `90` |
+| `CONVERSATION_CONTEXT_TURNS` | `5` |
+
+Gemini and Telegram may remain empty during the first deployment. To enable
+Gemini later, set `HOSTINGER_GEMINI_API_KEY`. To enable Telegram later, set all
+three variables together:
+
+- `HOSTINGER_TELEGRAM_BOT_TOKEN`
+- `HOSTINGER_TELEGRAM_WEBHOOK_SECRET` (16–256 letters, numbers, underscores, or hyphens)
+- `HOSTINGER_TELEGRAM_IDENTITY_PEPPER` (at least 32 random characters)
+
+Leaving only part of the Telegram secret set is invalid. Updating these values
+does not register or modify the Telegram webhook.
+
+An empty `HOSTINGER_DB_PASSWORD` or `HOSTINGER_DB_ROOT_PASSWORD` deliberately
+prevents MySQL from initializing. This is fail-closed behavior, not a usable
+default. The `HOSTINGER_` namespace also prevents Docker Compose from
+accidentally importing same-named secrets from the developer `.env` file.
+
+### 3. Validate and deploy
+
+From a clean repository checkout, validation must succeed without a local
+environment file:
+
+`docker compose -f compose.hostinger.yaml config`
+
+Deploy the project in Docker Manager after the required environment values are
+set. The expected steady state is:
+
+- `mysql`, `backend`, and `frontend`: running and healthy;
+- `migrate` and `bootstrap`: exited successfully with code `0`;
+- `prometheus`: not started unless the `monitoring` profile is explicitly
+  enabled.
+
+Docker Manager must not show host ports for MySQL, FastAPI, or Prometheus. The
+only published mapping is the selected frontend host port to container port
+`8080`.
+
+From the VPS, verify the frontend and the proxied backend without changing DNS:
+
+`curl --fail http://127.0.0.1:8088/healthz`
+
+`curl --fail http://127.0.0.1:8088/api/v1/health/live`
+
+If a different `HOSTINGER_FRONTEND_HOST_PORT` was selected, use it in both
+commands.
+
+### 4. Point the existing Nginx Proxy Manager proxy host
+
+In the existing Nginx Proxy Manager instance, configure the application proxy
+host with:
+
+- Scheme: `http`
+- Forward hostname/IP: the VPS host address reachable from the Nginx Proxy
+  Manager container
+- Forward port: `8088` (or the selected `HOSTINGER_FRONTEND_HOST_PORT`)
+- WebSocket support: enabled
+- Public SSL and certificate renewal: handled by Nginx Proxy Manager
+
+Do not use `127.0.0.1` as the forward hostname from inside the Nginx Proxy
+Manager container; that address refers to the proxy container itself. Do not
+publish this project's ports `80` or `443`, and do not enable
+`Caddyfile.production` in the Hostinger project.
+
+After proxying, verify:
+
+`curl --fail https://<public-domain>/healthz`
+
+`curl --fail https://<public-domain>/api/v1/health/live`
+
+This procedure does not change DNS, firewall rules, the running Nginx Proxy
+Manager service, or the Telegram webhook.

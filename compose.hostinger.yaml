@@ -1,0 +1,251 @@
+name: hotel-support-bot-hostinger
+
+x-backend-environment: &backend-environment
+  APP_NAME: AI Hotel Customer Support Bot
+  APP_ENVIRONMENT: production
+  APP_DEBUG: "false"
+  APP_LOG_LEVEL: ${APP_LOG_LEVEL:-INFO}
+  API_V1_PREFIX: /api/v1
+  # MUST be replaced in Docker Manager with "<public-domain>,backend".
+  TRUSTED_HOSTS: ${HOSTINGER_TRUSTED_HOSTS:-localhost,127.0.0.1,backend}
+  DB_HOST: mysql
+  DB_PORT: "3306"
+  DB_NAME: ${DB_NAME:-hotel_bot}
+  DB_USER: ${DB_USER:-hotel_bot}
+  # MUST be set in Docker Manager before the first deployment. Empty is fail-closed.
+  DB_PASSWORD: ${HOSTINGER_DB_PASSWORD:-}
+  DB_POOL_SIZE: ${DB_POOL_SIZE:-10}
+  DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-20}
+  CONVERSATION_RETENTION_DAYS: ${CONVERSATION_RETENTION_DAYS:-90}
+  CONVERSATION_CONTEXT_TURNS: ${CONVERSATION_CONTEXT_TURNS:-5}
+  CONVERSATION_CONTEXT_MAX_TOKENS: ${CONVERSATION_CONTEXT_MAX_TOKENS:-3000}
+  CONVERSATION_INACTIVITY_MINUTES: ${CONVERSATION_INACTIVITY_MINUTES:-30}
+  RETENTION_CLEANUP_BATCH_SIZE: ${RETENTION_CLEANUP_BATCH_SIZE:-500}
+  KNOWLEDGE_INDEX_PATH: /app/data/faiss
+  EMBEDDING_PROVIDER: sentence_transformers
+  EMBEDDING_MODEL: ${EMBEDDING_MODEL:-sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2}
+  EMBEDDING_MODEL_REVISION: ${EMBEDDING_MODEL_REVISION:-86741b4e3f5cb7765a600d3a3d55a0f6a6cb443d}
+  EMBEDDING_CACHE_PATH: /app/data/models
+  EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-384}
+  # Optional. Empty values keep the external integrations disabled safely.
+  GEMINI_API_KEY: ${HOSTINGER_GEMINI_API_KEY:-}
+  GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+  GEMINI_TIMEOUT_MS: ${GEMINI_TIMEOUT_MS:-20000}
+  GEMINI_RETRY_ATTEMPTS: ${GEMINI_RETRY_ATTEMPTS:-2}
+  GEMINI_MAX_OUTPUT_TOKENS: ${GEMINI_MAX_OUTPUT_TOKENS:-1024}
+  GEMINI_MAX_TOKENS_PER_TURN: ${GEMINI_MAX_TOKENS_PER_TURN:-10000}
+  GEMINI_MAX_ESTIMATED_COST_USD_PER_TURN: ${GEMINI_MAX_ESTIMATED_COST_USD_PER_TURN:-0.05}
+  TELEGRAM_BOT_TOKEN: ${HOSTINGER_TELEGRAM_BOT_TOKEN:-}
+  TELEGRAM_WEBHOOK_SECRET: ${HOSTINGER_TELEGRAM_WEBHOOK_SECRET:-}
+  TELEGRAM_IDENTITY_PEPPER: ${HOSTINGER_TELEGRAM_IDENTITY_PEPPER:-}
+  TELEGRAM_API_BASE_URL: https://api.telegram.org
+  TELEGRAM_TIMEOUT_MS: ${TELEGRAM_TIMEOUT_MS:-10000}
+  # Optional at bootstrap; MUST be set before enabling admin login.
+  ADMIN_TOKEN_SECRET: ${HOSTINGER_ADMIN_TOKEN_SECRET:-}
+  ADMIN_ACCESS_TOKEN_MINUTES: ${ADMIN_ACCESS_TOKEN_MINUTES:-15}
+  ADMIN_LOGIN_MAX_ATTEMPTS: ${ADMIN_LOGIN_MAX_ATTEMPTS:-5}
+  ADMIN_LOGIN_WINDOW_MINUTES: ${ADMIN_LOGIN_WINDOW_MINUTES:-15}
+
+x-backend-hardening: &backend-hardening
+  init: true
+  read_only: true
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,size=128m
+
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: ${DB_NAME:-hotel_bot}
+      MYSQL_USER: ${DB_USER:-hotel_bot}
+      # MUST be set in Docker Manager. Empty passwords stop initialization.
+      MYSQL_PASSWORD: ${HOSTINGER_DB_PASSWORD:-}
+      MYSQL_ROOT_PASSWORD: ${HOSTINGER_DB_ROOT_PASSWORD:-}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --default-time-zone=+00:00
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - mysqladmin ping --host=127.0.0.1 --user=root --password="$${MYSQL_ROOT_PASSWORD}" --silent
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: ${MYSQL_CPU_LIMIT:-1.0}
+          memory: ${MYSQL_MEMORY_LIMIT:-1536M}
+        reservations:
+          cpus: ${MYSQL_CPU_RESERVATION:-0.25}
+          memory: ${MYSQL_MEMORY_RESERVATION:-512M}
+
+  migrate:
+    build:
+      context: ./backend
+    environment: *backend-environment
+    command:
+      - python
+      - -m
+      - alembic
+      - -c
+      - /app/alembic.ini
+      - upgrade
+      - head
+    depends_on:
+      mysql:
+        condition: service_healthy
+    <<: *backend-hardening
+    volumes:
+      - ./backend/alembic.ini:/app/alembic.ini:ro
+      - ./backend/migrations:/app/migrations:ro
+    restart: "no"
+    deploy:
+      resources:
+        limits:
+          cpus: ${BACKEND_CPU_LIMIT:-2.0}
+          memory: ${BACKEND_MEMORY_LIMIT:-4G}
+        reservations:
+          cpus: ${BACKEND_CPU_RESERVATION:-0.5}
+          memory: ${BACKEND_MEMORY_RESERVATION:-1G}
+
+  bootstrap:
+    build:
+      context: ./backend
+    environment: *backend-environment
+    command:
+      - /bin/sh
+      - -ec
+      - python -m hotel_bot.seed && python -m hotel_bot.knowledge seed
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    <<: *backend-hardening
+    restart: "no"
+    deploy:
+      resources:
+        limits:
+          cpus: ${BACKEND_CPU_LIMIT:-2.0}
+          memory: ${BACKEND_MEMORY_LIMIT:-4G}
+        reservations:
+          cpus: ${BACKEND_CPU_RESERVATION:-0.5}
+          memory: ${BACKEND_MEMORY_RESERVATION:-1G}
+
+  backend:
+    build:
+      context: ./backend
+    environment: *backend-environment
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+    <<: *backend-hardening
+    volumes:
+      - faiss_data:/app/data/faiss
+      - embedding_models:/app/data/models
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health/live', timeout=2)"
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+    stop_grace_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: ${BACKEND_CPU_LIMIT:-2.0}
+          memory: ${BACKEND_MEMORY_LIMIT:-4G}
+        reservations:
+          cpus: ${BACKEND_CPU_RESERVATION:-0.5}
+          memory: ${BACKEND_MEMORY_RESERVATION:-1G}
+
+  frontend:
+    build:
+      context: ./frontend
+    depends_on:
+      backend:
+        condition: service_healthy
+    init: true
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /config:rw,noexec,nosuid,size=16m,uid=10001,gid=10001,mode=0750
+      - /data:rw,noexec,nosuid,size=64m,uid=10001,gid=10001,mode=0750
+      - /tmp:rw,noexec,nosuid,size=32m
+    ports:
+      - "${HOSTINGER_FRONTEND_HOST_PORT:-8088}:8080"
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - --quiet
+        - --spider
+        - http://127.0.0.1:8090/healthz
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    stop_grace_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: ${FRONTEND_CPU_LIMIT:-0.5}
+          memory: ${FRONTEND_MEMORY_LIMIT:-256M}
+        reservations:
+          cpus: ${FRONTEND_CPU_RESERVATION:-0.1}
+          memory: ${FRONTEND_MEMORY_RESERVATION:-64M}
+
+  prometheus:
+    image: prom/prometheus:v3.11.3
+    profiles:
+      - monitoring
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+    depends_on:
+      backend:
+        condition: service_healthy
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    volumes:
+      - ./ops/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./ops/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: ${PROMETHEUS_CPU_LIMIT:-0.5}
+          memory: ${PROMETHEUS_MEMORY_LIMIT:-512M}
+        reservations:
+          cpus: ${PROMETHEUS_CPU_RESERVATION:-0.1}
+          memory: ${PROMETHEUS_MEMORY_RESERVATION:-128M}
+
+volumes:
+  mysql_data:
+  faiss_data:
+  embedding_models:
+  prometheus_data:
