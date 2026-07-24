@@ -3,7 +3,9 @@ FROM python:3.12.13-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PIP_NO_INPUT=1
+    PIP_NO_INPUT=1 \
+    PIP_DEFAULT_TIMEOUT=600 \
+    PIP_RETRIES=5
 
 WORKDIR /app
 
@@ -17,9 +19,14 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     python -m pip install --requirement requirements.runtime.txt
 
 COPY pyproject.toml README.md ./
+COPY alembic.ini ./
+COPY migrations ./migrations
 COPY src ./src
 
-RUN python -m pip install --no-deps --no-build-isolation . \
+RUN test -f /app/alembic.ini \
+    && test -f /app/migrations/env.py \
+    && test -d /app/migrations/versions \
+    && python -m pip install --no-deps --no-build-isolation . \
     && mkdir -p /app/data/faiss /app/data/models \
     && chown -R app:app /app/data
 

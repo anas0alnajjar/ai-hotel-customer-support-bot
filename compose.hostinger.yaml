@@ -46,7 +46,11 @@ x-backend-environment: &backend-environment
   ADMIN_LOGIN_MAX_ATTEMPTS: ${ADMIN_LOGIN_MAX_ATTEMPTS:-5}
   ADMIN_LOGIN_WINDOW_MINUTES: ${ADMIN_LOGIN_WINDOW_MINUTES:-15}
 
-x-backend-hardening: &backend-hardening
+x-backend-runtime: &backend-runtime
+  image: hotel-support-bot-hostinger-backend:latest
+  build:
+    context: ./backend
+  working_dir: /app
   init: true
   read_only: true
   cap_drop:
@@ -90,24 +94,19 @@ services:
           memory: ${MYSQL_MEMORY_RESERVATION:-512M}
 
   migrate:
-    build:
-      context: ./backend
+    <<: *backend-runtime
     environment: *backend-environment
     command:
       - python
       - -m
       - alembic
-      - -c
+      - --config
       - /app/alembic.ini
       - upgrade
       - head
     depends_on:
       mysql:
         condition: service_healthy
-    <<: *backend-hardening
-    volumes:
-      - ./backend/alembic.ini:/app/alembic.ini:ro
-      - ./backend/migrations:/app/migrations:ro
     restart: "no"
     deploy:
       resources:
@@ -119,8 +118,7 @@ services:
           memory: ${BACKEND_MEMORY_RESERVATION:-1G}
 
   bootstrap:
-    build:
-      context: ./backend
+    <<: *backend-runtime
     environment: *backend-environment
     command:
       - /bin/sh
@@ -129,7 +127,6 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
-    <<: *backend-hardening
     restart: "no"
     deploy:
       resources:
@@ -141,13 +138,11 @@ services:
           memory: ${BACKEND_MEMORY_RESERVATION:-1G}
 
   backend:
-    build:
-      context: ./backend
+    <<: *backend-runtime
     environment: *backend-environment
     depends_on:
       bootstrap:
         condition: service_completed_successfully
-    <<: *backend-hardening
     volumes:
       - faiss_data:/app/data/faiss
       - embedding_models:/app/data/models

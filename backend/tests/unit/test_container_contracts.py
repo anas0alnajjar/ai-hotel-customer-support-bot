@@ -4,6 +4,7 @@ from pathlib import Path
 from tomllib import loads
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = BACKEND_ROOT.parent
 
 
 def _normalized(requirement: str) -> str:
@@ -43,3 +44,21 @@ def test_docker_context_excludes_tests_and_local_runtime_data() -> None:
     assert "data" in dockerignore
     assert "reports" in dockerignore
     assert "artifacts" in dockerignore
+
+
+def test_runtime_image_packages_alembic_configuration_and_migrations() -> None:
+    dockerfile = (BACKEND_ROOT / "Dockerfile").read_text(encoding="utf-8")
+    alembic_configuration = (BACKEND_ROOT / "alembic.ini").read_text(encoding="utf-8")
+    hostinger_compose = (PROJECT_ROOT / "compose.hostinger.yaml").read_text(encoding="utf-8")
+
+    assert "COPY alembic.ini ./" in dockerfile
+    assert "COPY migrations ./migrations" in dockerfile
+    assert "test -f /app/alembic.ini" in dockerfile
+    assert "test -f /app/migrations/env.py" in dockerfile
+    assert "test -d /app/migrations/versions" in dockerfile
+    assert "script_location = %(here)s/migrations" in alembic_configuration
+    assert "working_dir: /app" in hostinger_compose
+    assert "image: hotel-support-bot-hostinger-backend:latest" in hostinger_compose
+    assert "      - --config\n      - /app/alembic.ini" in hostinger_compose
+    assert "./backend/alembic.ini:/app/alembic.ini" not in hostinger_compose
+    assert "./backend/migrations:/app/migrations" not in hostinger_compose
