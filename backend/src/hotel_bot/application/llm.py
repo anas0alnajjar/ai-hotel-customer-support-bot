@@ -311,27 +311,33 @@ class HybridOrchestrator:
         definition = self._registry.resolve(tool_name)
         if definition is None:
             return self._unavailable(context, "action_tool_unavailable")
-        proposal_request = self._prompts.tool_proposal(
-            context, (definition.definition.declaration(),)
-        )
-        try:
-            proposal = await self._llm.generate(
-                message_id=context.current_message.id,
-                request=proposal_request,
-                budget=budget,
+        if trusted_tool_arguments is not None:
+            execution_name = tool_name
+            execution_arguments = dict(trusted_tool_arguments)
+        else:
+            proposal_request = self._prompts.tool_proposal(
+                context, (definition.definition.declaration(),)
             )
-        except LLMError:
-            return self._unavailable(context, "tool_proposal_model_unavailable")
-        if len(proposal.tool_calls) != 1:
-            return self._unavailable(context, "invalid_tool_proposal_count", model_used=True)
-        proposed = proposal.tool_calls[0]
-        execution_arguments = (
-            dict(trusted_tool_arguments)
-            if trusted_tool_arguments is not None and proposed.name == tool_name
-            else proposed.arguments
-        )
+            try:
+                proposal = await self._llm.generate(
+                    message_id=context.current_message.id,
+                    request=proposal_request,
+                    budget=budget,
+                )
+            except LLMError:
+                return self._unavailable(context, "tool_proposal_model_unavailable")
+            if len(proposal.tool_calls) != 1:
+                return self._unavailable(
+                    context,
+                    "invalid_tool_proposal_count",
+                    model_used=True,
+                )
+            proposed = proposal.tool_calls[0]
+            execution_name = proposed.name
+            execution_arguments = proposed.arguments
+
         execution = await self._tool_executor.execute(
-            ToolCall(name=proposed.name, arguments=execution_arguments),
+            ToolCall(name=execution_name, arguments=execution_arguments),
             ToolExecutionContext(
                 message_id=context.current_message.id,
                 correlation_id=context.current_message.correlation_id,
