@@ -14,6 +14,7 @@ from hotel_bot.application.tools import ControlledToolExecutor
 from hotel_bot.domain.conversation.models import ContextEnvelope
 from hotel_bot.domain.intent.enums import IntentCode, RoutingDecision
 from hotel_bot.domain.intent.models import RoutingResult
+from hotel_bot.domain.intent.taxonomy import INTENT_DEFINITIONS
 from hotel_bot.domain.llm.enums import AnswerBasis, LLMRunStatus
 from hotel_bot.domain.llm.errors import (
     LLMAuditError,
@@ -415,12 +416,23 @@ class HybridOrchestrator:
         language = context.state.language
         if routing.decision is RoutingDecision.CLARIFY:
             labels = PARAMETER_LABELS[language]
-            missing = ", ".join(labels.get(name, name) for name in routing.missing_parameters)
-            text = (
-                f"أحتاج المعلومات التالية للمتابعة: {missing}."
-                if language == "ar"
-                else f"I need these details to continue: {missing}."
+            missing_parameters = (
+                routing.missing_parameters
+                or INTENT_DEFINITIONS[routing.prediction.intent].required_parameters
             )
+            if missing_parameters:
+                missing = ", ".join(labels.get(name, name) for name in missing_parameters)
+                text = (
+                    f"أحتاج المعلومات التالية للمتابعة: {missing}."
+                    if language == "ar"
+                    else f"I need these details to continue: {missing}."
+                )
+            else:
+                text = (
+                    "هل يمكنك توضيح طلبك بمزيد من التفاصيل؟"
+                    if language == "ar"
+                    else "Could you clarify your request with a few more details?"
+                )
             reason = "clarification_required"
         elif routing.decision is RoutingDecision.ESCALATE:
             text = (

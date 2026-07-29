@@ -16,6 +16,8 @@ from hotel_bot.domain.conversation.models import (
     ConversationState,
     SupportedLanguage,
 )
+from hotel_bot.domain.hotel.enums import ServiceRequestType
+from hotel_bot.domain.hotel.policies import resolve_service_category
 from hotel_bot.domain.intent.enums import (
     IntentCode,
     PredictionSource,
@@ -30,7 +32,6 @@ from hotel_bot.domain.telegram.models import (
     TelegramInlineKeyboardButton,
     TelegramInlineKeyboardMarkup,
 )
-
 
 DATE_PATTERN = re.compile(r"\b20\d{2}-\d{2}-\d{2}\b")
 BOOKING_PATTERN = re.compile(
@@ -122,6 +123,11 @@ WORKFLOW_INTENT = {
 INTENT_WORKFLOW = {
     value: key
     for key, value in WORKFLOW_INTENT.items()
+}
+
+SERVICE_REQUEST_TYPE_BY_INTENT = {
+    IntentCode.ROOM_SERVICE_REQUEST: ServiceRequestType.ROOM_SERVICE,
+    IntentCode.MAINTENANCE_REQUEST: ServiceRequestType.MAINTENANCE,
 }
 
 
@@ -530,6 +536,37 @@ def _forced_routing(
     )
 
 
+def _resolve_service_request_routing(
+    routing: RoutingResult,
+    parameters: dict[str, object],
+) -> RoutingResult:
+    """Resolve an allowed service category before confirmation or execution."""
+
+    request_type = SERVICE_REQUEST_TYPE_BY_INTENT.get(routing.prediction.intent)
+    if request_type is None:
+        return routing
+
+    category = resolve_service_category(
+        request_type,
+        str(parameters.get("category", "")),
+        str(parameters.get("description", "")),
+    )
+    if category is not None:
+        parameters["category"] = category
+        return routing
+
+    missing = tuple(dict.fromkeys((*routing.missing_parameters, "category")))
+    return routing.model_copy(
+        update={
+            "decision": RoutingDecision.CLARIFY,
+            "missing_parameters": missing,
+            "requires_confirmation": False,
+            "allow_tool_execution": False,
+            "reason_code": "missing_service_category",
+        }
+    )
+
+
 class HotelGuestProcessor:
     def __init__(
         self,
@@ -861,6 +898,11 @@ class HotelGuestProcessor:
                 )
             )
 
+        routing = _resolve_service_request_routing(
+            routing,
+            parameters,
+        )
+
         workflow = INTENT_WORKFLOW.get(
             routing.prediction.intent
         )
@@ -985,23 +1027,16 @@ def _tool_arguments(
         if name in values
     }
 
-    if (
-        intent is IntentCode.MAINTENANCE_REQUEST
-        and str(selected.get("category", "")).strip().lower() == "general"
-    ):
-        description = str(selected.get("description", "")).casefold()
-        selected["category"] = (
-            "hvac"
-            if any(
-                token in description
-                for token in (
-                    "\u0645\u0643\u064a\u0641",
-                    "\u062a\u0643\u064a\u064a\u0641",
-                    "air conditioner",
-                    "hvac",
-                )
-            )
-            else "appliance"
+    request_type = SERVICE_REQUEST_TYPE_BY_INTENT.get(intent)
+    if request_type is not None:
+        category = resolve_service_category(
+            request_type,
+            str(selected.get("category", "")),
+            str(selected.get("description", "")),
         )
+        if category is None:
+            selected.pop("category", None)
+        else:
+            selected["category"] = category
 
     return selected

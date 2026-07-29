@@ -109,6 +109,11 @@ def test_low_confidence_action_is_clarification_and_never_execution() -> None:
     result = router.route("send towels", "en")
 
     assert result.decision is RoutingDecision.CLARIFY
+    assert result.missing_parameters == (
+        "room_number",
+        "category",
+        "description",
+    )
     assert result.allow_tool_execution is False
     assert result.reason_code == "low_confidence_or_margin"
 
@@ -121,6 +126,38 @@ def test_missing_parameters_block_high_confidence_action() -> None:
     assert result.decision is RoutingDecision.CLARIFY
     assert result.missing_parameters == ("check_in", "check_out")
     assert result.allow_tool_execution is False
+
+
+@pytest.mark.parametrize(
+    ("text", "language"),
+    [
+        ("في حجوزات؟", "ar"),
+        ("Are there rooms available?", "en"),
+    ],
+)
+def test_explicit_availability_question_uses_required_parameter_metadata(
+    text: str,
+    language: SupportedLanguage,
+) -> None:
+    router = SafeIntentRouter(
+        FixedPredictor(
+            prediction(
+                IntentCode.GREETING_SMALLTALK,
+                0.99,
+                0.90,
+            )
+        )
+    )
+
+    result = router.route(text, language)
+
+    assert result.prediction.intent is IntentCode.ROOM_AVAILABILITY
+    assert result.decision is RoutingDecision.CLARIFY
+    assert result.missing_parameters == (
+        "check_in",
+        "check_out",
+        "adults",
+    )
 
 
 def test_state_changing_prediction_requires_confirmation_and_orchestrator() -> None:

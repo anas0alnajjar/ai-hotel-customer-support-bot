@@ -1,5 +1,6 @@
 """Pure hotel inventory and service-request business rules."""
 
+import re
 from collections import Counter
 from datetime import date
 from uuid import NAMESPACE_URL, UUID, uuid5
@@ -46,6 +47,128 @@ SERVICE_CATEGORIES = {
         "appliance",
         "furniture",
         "safety",
+    },
+}
+SERVICE_CATEGORY_KEYWORDS: dict[
+    ServiceRequestType,
+    dict[str, tuple[str, ...]],
+] = {
+    ServiceRequestType.ROOM_SERVICE: {
+        "food_and_beverage": (
+            "food",
+            "meal",
+            "dinner",
+            "breakfast",
+            "وجبة",
+            "عشاء",
+            "فطور",
+        ),
+        "housekeeping": (
+            "clean",
+            "cleaning",
+            "housekeeping",
+            "تنظيف",
+        ),
+        "amenities": (
+            "towel",
+            "blanket",
+            "pillow",
+            "منشف",
+            "بطاني",
+            "وساد",
+        ),
+        "laundry": (
+            "laundry",
+            "washing",
+            "ملابس",
+            "غسيل",
+        ),
+    },
+    ServiceRequestType.MAINTENANCE: {
+        "hvac": (
+            "مكيف",
+            "التكييف",
+            "تكييف",
+            "تبريد",
+            "air conditioner",
+            "air conditioning",
+            "ac",
+            "hvac",
+        ),
+        "plumbing": (
+            "تسريب",
+            "مياه",
+            "حنفية",
+            "مرحاض",
+            "مغسلة",
+            "دوش",
+            "صرف",
+            "plumbing",
+            "leak",
+            "water",
+            "toilet",
+            "sink",
+            "shower",
+            "drain",
+        ),
+        "electrical": (
+            "كهرباء",
+            "كهربائي",
+            "مقبس",
+            "فيشة",
+            "إنارة",
+            "ضوء",
+            "مصباح",
+            "electric",
+            "electrical",
+            "socket",
+            "outlet",
+            "light",
+            "lamp",
+        ),
+        "appliance": (
+            "تلفاز",
+            "تلفزيون",
+            "ثلاجة",
+            "غلاية",
+            "مجفف",
+            "جهاز",
+            "tv",
+            "television",
+            "fridge",
+            "refrigerator",
+            "kettle",
+            "dryer",
+            "appliance",
+        ),
+        "furniture": (
+            "سرير",
+            "كرسي",
+            "طاولة",
+            "خزانة",
+            "باب",
+            "نافذة",
+            "bed",
+            "chair",
+            "table",
+            "wardrobe",
+            "door",
+            "window",
+            "furniture",
+        ),
+        "safety": (
+            "دخان",
+            "حريق",
+            "غاز",
+            "شرر",
+            "خطر",
+            "smoke",
+            "fire",
+            "gas",
+            "spark",
+            "danger",
+            "safety",
+        ),
     },
 }
 ALLOWED_STATUS_TRANSITIONS = {
@@ -188,6 +311,36 @@ def validate_service_category(request_type: ServiceRequestType, category: str) -
             "invalid_category", f"category is not allowed for {request_type.value}"
         )
     return normalized
+
+
+def resolve_service_category(
+    request_type: ServiceRequestType,
+    category: str,
+    description: str,
+) -> str | None:
+    """Return an allowed category or infer one deterministically from the issue text."""
+
+    normalized_category = category.strip().casefold()
+    allowed = SERVICE_CATEGORIES[request_type]
+    if normalized_category in allowed:
+        return normalized_category
+
+    searchable = " ".join((normalized_category, description.casefold()))
+    for resolved, keywords in SERVICE_CATEGORY_KEYWORDS[request_type].items():
+        if resolved not in allowed:
+            continue
+        if any(_contains_category_keyword(searchable, keyword) for keyword in keywords):
+            return resolved
+    return None
+
+
+def _contains_category_keyword(text: str, keyword: str) -> bool:
+    if keyword.isascii() and " " not in keyword:
+        return re.search(
+            rf"(?<![a-z0-9]){re.escape(keyword)}(?![a-z0-9])",
+            text,
+        ) is not None
+    return keyword in text
 
 
 def build_new_service_request(

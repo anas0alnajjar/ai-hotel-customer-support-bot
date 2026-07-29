@@ -24,7 +24,7 @@ from hotel_bot.domain.intent.classifier import (
     ALGORITHM_VERSION,
     NaiveBayesIntentClassifier,
 )
-from hotel_bot.domain.intent.enums import DatasetSplit
+from hotel_bot.domain.intent.enums import DatasetSplit, IntentCode
 from hotel_bot.domain.intent.models import RoutingResult
 from hotel_bot.domain.intent.routing import SafeIntentRouter
 from hotel_bot.domain.llm.enums import AnswerBasis
@@ -50,7 +50,6 @@ from hotel_bot.persistence import (
     Conversation,
     Guest,
 )
-
 
 pytestmark = [
     pytest.mark.integration,
@@ -180,6 +179,12 @@ class RecordingOrchestrator:
             )
 
         if confirmed:
+            tool_name = (
+                "create_maintenance_request"
+                if routing.prediction.intent
+                is IntentCode.MAINTENANCE_REQUEST
+                else "create_room_service_request"
+            )
             return OrchestrationResult(
                 answer=GroundedAnswer(
                     language=context.state.language,
@@ -190,7 +195,7 @@ class RecordingOrchestrator:
                     ),
                     basis=AnswerBasis.TOOL,
                     tool_names=(
-                        "create_room_service_request",
+                        tool_name,
                     ),
                 ),
                 tool_executed=True,
@@ -580,6 +585,41 @@ def test_mysql_guest_journey_supports_inline_confirmation_and_cancellation() -> 
                 == 1
             )
 
+            maintenance_proposed = await process_message(
+                message(
+                    7008,
+                    "المكيف في الغرفة 304 لا يعمل، أريد فتح طلب صيانة.",
+                    language="ar",
+                )
+            )
+
+            maintenance_confirmed = await process_callback(
+                callback(
+                    7009,
+                    "workflow:confirm",
+                    language="ar",
+                    message_id=9003,
+                )
+            )
+
+            assert maintenance_proposed.reply_markup is not None
+            assert maintenance_confirmed.text == "تم إنشاء الطلب."
+
+            maintenance_calls = [
+                call
+                for call in orchestrator.calls
+                if (
+                    call[1] is True
+                    and call[0].prediction.intent
+                    is IntentCode.MAINTENANCE_REQUEST
+                )
+            ]
+
+            assert len(maintenance_calls) == 1
+            assert maintenance_calls[0][2] is not None
+            assert maintenance_calls[0][2]["room_number"] == "304"
+            assert maintenance_calls[0][2]["category"] == "hvac"
+
             async with manager.session() as session:
                 conversation = await session.scalar(
                     select(
@@ -630,7 +670,7 @@ def test_mysql_guest_journey_supports_inline_confirmation_and_cancellation() -> 
                     )
                 ).all()
 
-                assert len(updates) == 7
+                assert len(updates) == 9
 
         finally:
             await remove_guest(manager)

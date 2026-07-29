@@ -55,6 +55,18 @@ GREETING_ONLY = frozenset(
         "good evening",
     }
 )
+AVAILABILITY_QUESTIONS = frozenset(
+    {
+        "في حجوزات",
+        "هل في حجوزات",
+        "في غرف متاحة",
+        "هل في غرف متاحة",
+        "هل توجد غرف متاحة",
+        "any availability",
+        "any rooms available",
+        "are there rooms available",
+    }
+)
 
 
 class IntentPredictor(Protocol):
@@ -111,7 +123,11 @@ class SafeIntentRouter:
                 reason_code="deterministic_greeting",
             )
 
-        prediction = self._classifier.predict(text, language)
+        prediction = (
+            _rule_prediction(IntentCode.ROOM_AVAILABILITY)
+            if normalized in AVAILABILITY_QUESTIONS
+            else self._classifier.predict(text, language)
+        )
         if prediction.intent is IntentCode.HUMAN_ESCALATION:
             return RoutingResult(
                 prediction=prediction,
@@ -131,6 +147,13 @@ class SafeIntentRouter:
                 reason_code="classified_greeting",
             )
 
+        definition = INTENT_DEFINITIONS[prediction.intent]
+        values = parameters or {}
+        missing = tuple(
+            name
+            for name in definition.required_parameters
+            if values.get(name) is None or values.get(name) == ""
+        )
         threshold = (
             self._action_threshold
             if prediction.intent in ACTION_INTENTS
@@ -140,6 +163,7 @@ class SafeIntentRouter:
             return RoutingResult(
                 prediction=prediction,
                 decision=RoutingDecision.CLARIFY,
+                missing_parameters=missing,
                 reason_code="low_confidence_or_margin",
             )
 
@@ -150,13 +174,6 @@ class SafeIntentRouter:
                 reason_code="high_confidence_knowledge_candidate",
             )
 
-        definition = INTENT_DEFINITIONS[prediction.intent]
-        values = parameters or {}
-        missing = tuple(
-            name
-            for name in definition.required_parameters
-            if values.get(name) is None or values.get(name) == ""
-        )
         if missing:
             return RoutingResult(
                 prediction=prediction,

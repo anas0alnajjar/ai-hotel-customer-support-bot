@@ -8,6 +8,10 @@ from uuid import UUID, uuid4
 import pytest
 from pydantic import BaseModel
 
+from hotel_bot.application.hotel_tools import (
+    MaintenanceRequestInput,
+    ServiceRequestCreatedOutput,
+)
 from hotel_bot.application.knowledge import KnowledgeRetrievalService
 from hotel_bot.application.llm import AuditedLLMService, HybridOrchestrator, TurnBudget
 from hotel_bot.application.prompts import SYSTEM_INSTRUCTION, PromptFactory
@@ -85,7 +89,11 @@ class FakeRetrieval:
         return self.result
 
 
-def envelope(text: str = "ما هي أنواع الغرف؟") -> ContextEnvelope:
+def envelope(
+    text: str = "ما هي أنواع الغرف؟",
+    *,
+    language: str = "ar",
+) -> ContextEnvelope:
     conversation_id = uuid4()
     current = MessageSnapshot(
         id=uuid4(),
@@ -93,12 +101,12 @@ def envelope(text: str = "ما هي أنواع الغرف؟") -> ContextEnvelope
         sequence_number=1,
         direction=MessageDirection.INBOUND,
         text=text,
-        language="ar",
+        language=cast(Any, language),
         correlation_id="llm-test-correlation",
         created_at=NOW,
     )
     return ContextEnvelope(
-        state=ConversationState(language="ar"),
+        state=ConversationState(language=cast(Any, language)),
         current_message=current,
         turns=(),
         evidence=(),
@@ -166,8 +174,12 @@ def registry_and_audit() -> tuple[ToolRegistry, MemoryToolAudit]:
 def orchestrator(
     provider: FakeProvider,
     retrieval: FakeRetrieval | None = None,
+    registry: ToolRegistry | None = None,
 ) -> tuple[HybridOrchestrator, MemoryLLMAudit, MemoryToolAudit]:
-    registry, tool_audit = registry_and_audit()
+    if registry is None:
+        registry, tool_audit = registry_and_audit()
+    else:
+        tool_audit = MemoryToolAudit()
     llm_audit = MemoryLLMAudit()
     llm = AuditedLLMService(provider, llm_audit)
     no_evidence = RetrievalResult(
@@ -249,6 +261,125 @@ def test_confirmation_gate_prevents_model_and_tool_calls() -> None:
     assert provider.requests == []
     assert llm_audit.records == []
     assert tool_audit.records == []
+
+
+@pytest.mark.parametrize(
+    ("language", "text", "expected_labels"),
+    [
+        (
+            "ar",
+            "في حجوزات؟",
+            (
+                "تاريخ الوصول بصيغة YYYY-MM-DD",
+                "تاريخ المغادرة بصيغة YYYY-MM-DD",
+                "عدد البالغين",
+            ),
+        ),
+        (
+            "en",
+            "Are there bookings available?",
+            (
+                "check-in date (YYYY-MM-DD)",
+                "check-out date (YYYY-MM-DD)",
+                "number of adults",
+            ),
+        ),
+    ],
+)
+def test_empty_availability_clarification_uses_taxonomy_required_parameters(
+    language: str,
+    text: str,
+    expected_labels: tuple[str, ...],
+) -> None:
+    provider = FakeProvider([])
+    service, llm_audit, tool_audit = orchestrator(provider)
+
+    result = asyncio.run(
+        service.handle(
+            envelope(text, language=language),
+            routing(
+                IntentCode.ROOM_AVAILABILITY,
+                decision=RoutingDecision.CLARIFY,
+            ),
+        )
+    )
+
+    assert all(label in result.answer.text for label in expected_labels)
+    assert not result.answer.text.rstrip().endswith(": .")
+    assert provider.requests == []
+    assert llm_audit.records == []
+    assert tool_audit.records == []
+
+
+def test_confirmed_trusted_maintenance_arguments_execute_allow_listed_tool() -> None:
+    async def handler(arguments: BaseModel) -> BaseModel:
+        values = cast(MaintenanceRequestInput, arguments)
+        assert values.category == "hvac"
+        return ServiceRequestCreatedOutput(
+            tracking_code="SR-HVAC00000001",
+            request_type="maintenance",
+            category=values.category,
+            urgency=values.urgency.value,
+            status="open",
+            created=True,
+            requires_immediate_contact=False,
+            emergency_guidance_code=None,
+        )
+
+    maintenance_registry = ToolRegistry(
+        (
+            RegisteredTool(
+                ToolDefinition(
+                    name="create_maintenance_request",
+                    description="Create a validated simulated hotel maintenance service request.",
+                    input_model=MaintenanceRequestInput,
+                    output_model=ServiceRequestCreatedOutput,
+                    allowed_callers=frozenset({ToolCaller.ASSISTANT}),
+                    timeout_ms=500,
+                    effect=ToolEffect.WRITE,
+                    requires_confirmation=True,
+                ),
+                handler,
+            ),
+        )
+    )
+    final = GroundedAnswer(
+        language="ar",
+        text="تم إنشاء طلب الصيانة برمز SR-HVAC00000001.",
+        basis=AnswerBasis.TOOL,
+        tool_names=("create_maintenance_request",),
+    )
+    provider = FakeProvider([response(text=final.model_dump_json())])
+    service, _, tool_audit = orchestrator(
+        provider,
+        registry=maintenance_registry,
+    )
+
+    result = asyncio.run(
+        service.handle(
+            envelope("المكيف في الغرفة 304 لا يعمل، أريد فتح طلب صيانة."),
+            routing(
+                IntentCode.MAINTENANCE_REQUEST,
+                requires_confirmation=True,
+            ),
+            confirmed=True,
+            trusted_tool_arguments={
+                "category": "hvac",
+                "room_number": "304",
+                "description": "المكيف في الغرفة 304 لا يعمل، أريد فتح طلب صيانة.",
+                "urgency": "normal",
+                "idempotency_key": "telegram-maintenance-ac-1003",
+            },
+        )
+    )
+
+    assert result.tool_executed is True
+    assert result.reason_code == "validated_tool_answer"
+    assert len(provider.requests) == 1
+    assert tool_audit.records[0].tool_name == "create_maintenance_request"
+    assert tool_audit.records[0].arguments_redacted["category"] == "hvac"
+    assert tool_audit.records[0].result_status.value == "succeeded"
+    assert tool_audit.records[0].error_code is None
 
 
 def test_valid_tool_proposal_executes_then_returns_validated_structured_answer() -> None:

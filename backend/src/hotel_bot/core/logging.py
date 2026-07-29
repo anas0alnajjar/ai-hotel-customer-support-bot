@@ -2,8 +2,20 @@
 
 import json
 import logging
+import re
 from datetime import UTC, datetime
 from typing import Any
+
+TELEGRAM_BOT_URL_PATTERN = re.compile(
+    r"(https://api\.telegram\.org/bot)[^/\s\"']+",
+    re.IGNORECASE,
+)
+
+
+def redact_telegram_bot_token(value: str) -> str:
+    """Remove Telegram bot credentials while preserving the endpoint path."""
+
+    return TELEGRAM_BOT_URL_PATTERN.sub(r"\1<REDACTED>", value)
 
 
 class JsonFormatter(logging.Formatter):
@@ -14,7 +26,7 @@ class JsonFormatter(logging.Formatter):
             "timestamp": datetime.now(UTC).isoformat(),
             "level": record.levelname,
             "logger": record.name,
-            "message": record.getMessage(),
+            "message": redact_telegram_bot_token(record.getMessage()),
         }
         correlation_id = getattr(record, "correlation_id", None)
         if correlation_id is not None:
@@ -30,7 +42,9 @@ class JsonFormatter(logging.Formatter):
             if value is not None:
                 payload[field] = value
         if record.exc_info:
-            payload["exception"] = self.formatException(record.exc_info)
+            payload["exception"] = redact_telegram_bot_token(
+                self.formatException(record.exc_info)
+            )
         return json.dumps(payload, ensure_ascii=False)
 
 

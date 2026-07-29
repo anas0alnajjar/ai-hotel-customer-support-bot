@@ -29,10 +29,63 @@ from hotel_bot.domain.hotel.policies import (
     build_new_service_request,
     calculate_availability,
     requires_immediate_contact,
+    resolve_service_category,
     stays_overlap,
     validate_status_transition,
     validate_stay,
 )
+
+
+@pytest.mark.parametrize(
+    ("description", "expected"),
+    [
+        ("المكيف لا يعمل والتبريد متوقف", "hvac"),
+        ("There is a water leak under the sink", "plumbing"),
+        ("The electrical outlet has no power", "electrical"),
+        ("The room television is broken", "appliance"),
+        ("The wardrobe door is damaged", "furniture"),
+        ("There is smoke and a gas danger", "safety"),
+    ],
+)
+def test_maintenance_category_resolution_uses_domain_allow_list(
+    description: str,
+    expected: str,
+) -> None:
+    assert (
+        resolve_service_category(
+            ServiceRequestType.MAINTENANCE,
+            "general",
+            description,
+        )
+        == expected
+    )
+
+
+def test_category_resolution_preserves_valid_values_and_rejects_unknown_issues() -> None:
+    assert (
+        resolve_service_category(
+            ServiceRequestType.MAINTENANCE,
+            "hvac",
+            "Unstructured issue",
+        )
+        == "hvac"
+    )
+    assert (
+        resolve_service_category(
+            ServiceRequestType.MAINTENANCE,
+            "general",
+            "Something in the room is not right",
+        )
+        is None
+    )
+    assert (
+        resolve_service_category(
+            ServiceRequestType.ROOM_SERVICE,
+            "food",
+            "Please send breakfast to the room",
+        )
+        == "food_and_beverage"
+    )
 
 
 def build_inventory() -> tuple[InventorySnapshot, str]:
