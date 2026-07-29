@@ -181,6 +181,54 @@ def test_existing_booking_phrase_is_distinct_from_room_availability() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("text", "language", "expected_intent", "expected_decision"),
+    [
+        (
+            (
+                "Does the hotel offer airport pick-up services from Damascus "
+                "International Airport, and how far in advance do I need to book?"
+            ),
+            "en",
+            IntentCode.HOTEL_INFO,
+            RoutingDecision.KNOWLEDGE_CANDIDATE,
+        ),
+        (
+            "أريد فطوراً للغرفة 101",
+            "ar",
+            IntentCode.ROOM_SERVICE_REQUEST,
+            RoutingDecision.CLARIFY,
+        ),
+        (
+            "ما وقت الإفطار؟",
+            "ar",
+            IntentCode.HOTEL_INFO,
+            RoutingDecision.KNOWLEDGE_CANDIDATE,
+        ),
+        (
+            "هل يوجد واي فاي في الفندق؟",
+            "ar",
+            IntentCode.HOTEL_INFO,
+            RoutingDecision.KNOWLEDGE_CANDIDATE,
+        ),
+    ],
+)
+def test_acceptance_queries_reach_the_intended_architecture_path(
+    text: str,
+    language: SupportedLanguage,
+    expected_intent: IntentCode,
+    expected_decision: RoutingDecision,
+) -> None:
+    loaded = load_intent_dataset(DATASET_PATH)
+    classifier = NaiveBayesIntentClassifier(classifier_version=f"{ALGORITHM_VERSION}+acceptance")
+    classifier.fit(loaded.dataset.samples)
+
+    result = SafeIntentRouter(classifier).route(text, language)
+
+    assert result.prediction.intent is expected_intent
+    assert result.decision is expected_decision
+
+
 def test_state_changing_prediction_requires_confirmation_and_orchestrator() -> None:
     router = SafeIntentRouter(
         FixedPredictor(prediction(IntentCode.MAINTENANCE_REQUEST, 0.98, 0.90))

@@ -881,6 +881,33 @@ def test_mysql_guest_journey_supports_inline_confirmation_and_cancellation() -> 
 
             await process_message(
                 message(
+                    7040,
+                    "/new",
+                    language="ar",
+                )
+            )
+            one_message_result = await process_message(
+                message(
+                    7041,
+                    "أريد غرفة من 2026-08-10 إلى 2026-08-12 لشخصين",
+                    language="ar",
+                )
+            )
+            one_message_call = orchestrator.calls[-1]
+
+            assert one_message_result.text == "تم التحقق من التوفر."
+            assert (
+                one_message_call[0].prediction.intent
+                is IntentCode.ROOM_AVAILABILITY
+            )
+            assert one_message_call[0].missing_parameters == ()
+            assert one_message_call[2] is not None
+            assert str(one_message_call[2]["check_in"]) == "2026-08-10"
+            assert str(one_message_call[2]["check_out"]) == "2026-08-12"
+            assert one_message_call[2]["adults"] == 2
+
+            await process_message(
+                message(
                     7020,
                     "/new",
                     language="ar",
@@ -989,7 +1016,7 @@ def test_mysql_guest_journey_supports_inline_confirmation_and_cancellation() -> 
                     )
                 ).all()
 
-                assert len(updates) == 28
+                assert len(updates) == 30
 
         finally:
             await remove_guest(manager)

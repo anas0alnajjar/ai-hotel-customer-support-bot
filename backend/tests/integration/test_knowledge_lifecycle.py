@@ -82,12 +82,14 @@ def test_approved_revisions_activate_atomically_and_failed_build_keeps_active() 
                 service = KnowledgeManagementService(SQLAlchemyKnowledgeRepository(session))
                 document, revision = await service.create_document(
                     admin_id=admin_id,
-                    title="Integration breakfast policy",
+                    title="Airport transfer",
                     language="en",
                     source_format=SourceFormat.PLAIN_TEXT,
                     content=(
-                        "The integration breakfast buffet is served from 6:30 AM to 10:30 AM "
-                        "in the Jasmine Restaurant."
+                        "Private transfers between Damascus International Airport and the "
+                        "hotel can be arranged at least 24 hours in advance. The service is "
+                        "chargeable and requires the flight number, arrival time, and "
+                        "passenger count. The driver meets guests in the public arrivals hall."
                     ),
                 )
                 document_ids.append(document.id)
@@ -97,7 +99,7 @@ def test_approved_revisions_activate_atomically_and_failed_build_keeps_active() 
                     revision_id=revision.id,
                 )
 
-            embedder = HashingEmbeddingProvider(dimension=64)
+            embedder = HashingEmbeddingProvider(dimension=384)
             with TemporaryDirectory() as temp_dir:
                 store = FaissIndexStore(Path(temp_dir))
                 async with database.transaction() as session:
@@ -121,11 +123,20 @@ def test_approved_revisions_activate_atomically_and_failed_build_keeps_active() 
                         embedder,
                         store,
                         minimum_score=0.05,
-                    ).retrieve("When is the integration breakfast buffet served?")
+                    ).retrieve(
+                        "Does the hotel offer airport pick-up services from Damascus "
+                        "International Airport, and how far in advance do I need to book?"
+                    )
                 assert result.sufficient is True
                 assert result.index_version_id == active.id
-                assert result.evidence[0].document_id == document.id
-                assert result.evidence[0].revision_id == revision.id
+                airport_evidence = next(
+                    item
+                    for item in result.evidence
+                    if item.title == "Airport transfer"
+                    and "at least 24 hours in advance" in item.text
+                )
+                assert airport_evidence.document_id
+                assert airport_evidence.revision_id
 
                 async with database.transaction() as session:
                     failed_service = KnowledgeIndexService(

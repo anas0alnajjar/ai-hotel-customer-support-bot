@@ -1,6 +1,5 @@
 """Audited LLM execution and safe hybrid orchestration."""
 
-import json
 from collections.abc import Mapping
 from time import perf_counter
 from typing import Protocol
@@ -612,10 +611,45 @@ class HybridOrchestrator:
     def _tool_failure(
         self, context: ContextEnvelope, execution: ToolExecutionResult
     ) -> OrchestrationResult:
-        text = (
+        messages = {
+            "ar": {
+                "check_in_in_past": (
+                    "تاريخ الوصول يجب أن يكون اليوم أو لاحقاً. ما تاريخ الوصول الجديد؟"
+                ),
+                "check_in_too_far": (
+                    "تاريخ الوصول بعيد أكثر من المدة المسموحة. ما تاريخ الوصول الجديد؟"
+                ),
+                "invalid_date_range": (
+                    "تاريخ المغادرة يجب أن يكون بعد تاريخ الوصول. ما تاريخ المغادرة الجديد؟"
+                ),
+                "stay_too_long": ("مدة الإقامة تتجاوز الحد المسموح. ما تاريخ المغادرة الجديد؟"),
+                "adults_required": "يجب أن تضم الإقامة بالغاً واحداً على الأقل. كم عدد البالغين؟",
+            },
+            "en": {
+                "check_in_in_past": (
+                    "The arrival date must be today or later. What is the new arrival date?"
+                ),
+                "check_in_too_far": (
+                    "The arrival date is beyond the allowed booking window. "
+                    "What is the new arrival date?"
+                ),
+                "invalid_date_range": (
+                    "The departure date must be after arrival. What is the new departure date?"
+                ),
+                "stay_too_long": (
+                    "The stay exceeds the allowed length. What is the new departure date?"
+                ),
+                "adults_required": ("At least one adult is required. How many adults will stay?"),
+            },
+        }
+        fallback = (
             "لم تُنفذ العملية. تحقق من البيانات أو حاول لاحقاً."
             if context.state.language == "ar"
             else "The operation was not executed. Check the details or try again later."
+        )
+        text = messages[context.state.language].get(
+            execution.error_code or "",
+            fallback,
         )
         return OrchestrationResult(
             answer=GroundedAnswer(
@@ -631,10 +665,76 @@ class HybridOrchestrator:
     @staticmethod
     def _tool_fallback_text(context: ContextEnvelope, execution: ToolExecutionResult) -> str:
         payload = execution.output.model_dump(mode="json") if execution.output else {}
-        rendered = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
-        prefix = (
-            "تم تنفيذ العملية بنجاح: "
-            if context.state.language == "ar"
-            else "The operation succeeded: "
-        )
-        return (prefix + rendered)[:2400]
+        language = context.state.language
+        if execution.tool_name == "check_room_availability":
+            options = payload.get("options") or []
+            if not options:
+                return (
+                    "لا توجد غرف متاحة وفق البيانات المدخلة. جرّب تواريخ أو فئة غرفة أخرى."
+                    if language == "ar"
+                    else (
+                        "No rooms are available for those details. "
+                        "Try different dates or another room type."
+                    )
+                )
+            option = options[0]
+            name = option.get("name_ar") if language == "ar" else option.get("name_en")
+            amenities = tuple(option.get("amenities") or ())[:2]
+            amenities_text = "، ".join(str(item) for item in amenities)
+            capacity = int(option.get("capacity_adults", 0)) + int(
+                option.get("capacity_children", 0)
+            )
+            available = option.get("available_rooms", 0)
+            if language == "ar":
+                amenity_clause = f"، وأبرز المزايا: {amenities_text}" if amenities_text else ""
+                return (
+                    f"متاح {name} بسعة {capacity} نزلاء ({available} غرف متوفرة)"
+                    f"{amenity_clause}. أخبرني إذا أردت متابعة الحجز."
+                )
+            amenity_clause = f"; key amenities: {amenities_text}" if amenities_text else ""
+            return (
+                f"{name} is available for up to {capacity} guests "
+                f"({available} rooms available){amenity_clause}. "
+                "Tell me if you want to continue with a booking."
+            )
+        if execution.tool_name in {
+            "create_room_service_request",
+            "create_maintenance_request",
+        }:
+            tracking_code = payload.get("tracking_code", "")
+            return (
+                f"تم إنشاء الطلب بنجاح. رمز التتبع: {tracking_code}."
+                if language == "ar"
+                else f"The request was created. Tracking code: {tracking_code}."
+            )
+        if execution.tool_name == "get_service_request_status":
+            tracking_code = payload.get("tracking_code", "")
+            status = payload.get("status", "")
+            return (
+                f"حالة الطلب {tracking_code}: {status}."
+                if language == "ar"
+                else f"Request {tracking_code} is {status}."
+            )
+        if execution.tool_name == "lookup_booking":
+            reference = payload.get("reference", "")
+            status = payload.get("status", "")
+            check_in = payload.get("check_in", "")
+            check_out = payload.get("check_out", "")
+            return (
+                f"حالة الحجز {reference}: {status}، من {check_in} إلى {check_out}."
+                if language == "ar"
+                else f"Booking {reference} is {status}, from {check_in} to {check_out}."
+            )
+        if execution.tool_name == "list_room_types":
+            room_types = payload.get("room_types") or []
+            names = [
+                str(item.get("name_ar") if language == "ar" else item.get("name_en"))
+                for item in room_types[:3]
+            ]
+            rendered_names = "، ".join(names)
+            return (
+                f"فئات الغرف المتاحة: {rendered_names}."
+                if language == "ar"
+                else f"Available room types: {rendered_names}."
+            )
+        return "تم تنفيذ العملية بنجاح." if language == "ar" else "The operation succeeded."

@@ -1,11 +1,12 @@
 """Deterministic guest-parameter extraction and prompt-redaction tests."""
 
-from datetime import datetime
+from datetime import date, datetime
 from uuid import uuid4
 
 from hotel_bot.application.guest_flows import (
     _command_reply,
     _forced_routing,
+    _recover_availability_state,
     _resolve_service_request_routing,
     _state_with_parameters,
     _tool_arguments,
@@ -155,6 +156,25 @@ def test_multivalue_availability_extracts_dates_and_bare_adults_together() -> No
     assert str(parameters["check_in"]) == "2026-01-01"
     assert str(parameters["check_out"]) == "2026-01-10"
     assert parameters["adults"] == 14
+
+
+def test_past_arrival_recovery_clears_dates_but_preserves_collected_occupancy() -> None:
+    state = ConversationState(
+        language="ar",
+        check_in=date(2020, 1, 1),
+        check_out=date(2020, 1, 3),
+        adults=2,
+        children=0,
+        active_workflow=ActiveWorkflow.AVAILABILITY,
+    )
+
+    recovered = _recover_availability_state(state, "check_in_in_past")
+
+    assert recovered.check_in is None
+    assert recovered.check_out is None
+    assert recovered.adults == 2
+    assert recovered.children == 0
+    assert recovered.active_workflow is ActiveWorkflow.AVAILABILITY
 
 
 def test_room_service_followup_builds_valid_confirmable_arguments() -> None:

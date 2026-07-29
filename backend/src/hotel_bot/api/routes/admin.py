@@ -58,7 +58,14 @@ from hotel_bot.persistence.enums import AdminRole, EscalationStatus, EvaluationS
 
 router = APIRouter()
 bearer = HTTPBearer(auto_error=False)
-BACKEND_ROOT = Path(__file__).resolve().parents[4]
+PACKAGED_BACKEND_ROOT = Path("/app")
+SOURCE_BACKEND_ROOT = Path(__file__).resolve().parents[4]
+BACKEND_ROOT = (
+    PACKAGED_BACKEND_ROOT
+    if (PACKAGED_BACKEND_ROOT / "artifacts/evaluation/intent-evaluation-v1.json").is_file()
+    and (PACKAGED_BACKEND_ROOT / "reports/knowledge-retrieval-v1.json").is_file()
+    else SOURCE_BACKEND_ROOT
+)
 
 ALL_ROLES = frozenset({AdminRole.ADMIN, AdminRole.SUPPORT, AdminRole.EVALUATOR})
 ADMIN_ONLY = frozenset({AdminRole.ADMIN})

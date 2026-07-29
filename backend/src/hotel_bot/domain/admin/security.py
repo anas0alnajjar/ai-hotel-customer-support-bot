@@ -30,7 +30,7 @@ VERIFICATION_PATTERN = re.compile(
     re.IGNORECASE,
 )
 EMAIL_PATTERN = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
-PHONE_PATTERN = re.compile(r"(?<!\w)(?:\+?\d[\d\s().-]{7,}\d)(?!\w)")
+PHONE_PATTERN = re.compile(r"(?<!\w)(?!\d{4}-\d{2}-\d{2}(?!\d))(?:\+?\d[\d\s().-]{7,}\d)(?!\w)")
 
 
 def _b64encode(value: bytes) -> str:

@@ -5,8 +5,12 @@ __pycache__
 .ruff_cache
 tests
 data
-reports
-artifacts
+reports/*
+!reports/knowledge-retrieval-v1.json
+artifacts/*
+!artifacts/evaluation/
+artifacts/evaluation/*
+!artifacts/evaluation/intent-evaluation-v1.json
 *.pyc
 *.pyo
 .coverage

@@ -21,11 +21,15 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 COPY pyproject.toml README.md ./
 COPY alembic.ini ./
 COPY migrations ./migrations
+COPY artifacts/evaluation ./artifacts/evaluation
+COPY reports ./reports
 COPY src ./src
 
 RUN test -f /app/alembic.ini \
     && test -f /app/migrations/env.py \
     && test -d /app/migrations/versions \
+    && test -f /app/artifacts/evaluation/intent-evaluation-v1.json \
+    && test -f /app/reports/knowledge-retrieval-v1.json \
     && python -m pip install --no-deps --no-build-isolation . \
     && mkdir -p /app/data/faiss /app/data/models \
     && chown -R app:app /app/data

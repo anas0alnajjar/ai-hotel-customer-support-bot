@@ -9,6 +9,9 @@ import pytest
 from pydantic import BaseModel
 
 from hotel_bot.application.hotel_tools import (
+    AvailabilityInput,
+    AvailabilityOptionOutput,
+    AvailabilityOutput,
     MaintenanceRequestInput,
     RoomServiceRequestInput,
     ServiceRequestCreatedOutput,
@@ -19,6 +22,7 @@ from hotel_bot.application.prompts import SYSTEM_INSTRUCTION, PromptFactory
 from hotel_bot.application.tools import ControlledToolExecutor
 from hotel_bot.domain.conversation.enums import MessageDirection
 from hotel_bot.domain.conversation.models import ContextEnvelope, ConversationState, MessageSnapshot
+from hotel_bot.domain.hotel.errors import InvalidStay
 from hotel_bot.domain.intent.enums import IntentCode, PredictionSource, RoutingDecision
 from hotel_bot.domain.intent.models import IntentPrediction, RoutingResult
 from hotel_bot.domain.knowledge.models import RetrievalEvidence, RetrievalResult
@@ -494,6 +498,109 @@ def test_confirmed_trusted_maintenance_arguments_execute_allow_listed_tool() -> 
     assert tool_audit.records[0].error_code is None
 
 
+def availability_registry(*, reject_past_date: bool = False) -> ToolRegistry:
+    async def handler(arguments: BaseModel) -> BaseModel:
+        values = cast(AvailabilityInput, arguments)
+        if reject_past_date:
+            raise InvalidStay("check_in_in_past", "check-in cannot be in the past")
+        return AvailabilityOutput(
+            check_in=values.check_in,
+            check_out=values.check_out,
+            adults=values.adults,
+            children=values.children,
+            options=(
+                AvailabilityOptionOutput(
+                    room_type_code="deluxe",
+                    name_ar="غرفة ديلوكس",
+                    name_en="Deluxe Room",
+                    capacity_adults=2,
+                    capacity_children=1,
+                    available_rooms=3,
+                    amenities=("wifi", "breakfast", "balcony"),
+                ),
+            ),
+        )
+
+    return ToolRegistry(
+        (
+            RegisteredTool(
+                ToolDefinition(
+                    name="check_room_availability",
+                    description="Check validated simulated room inventory.",
+                    input_model=AvailabilityInput,
+                    output_model=AvailabilityOutput,
+                    allowed_callers=frozenset({ToolCaller.ASSISTANT}),
+                    timeout_ms=500,
+                    effect=ToolEffect.READ,
+                    requires_confirmation=False,
+                ),
+                handler,
+            ),
+        )
+    )
+
+
+def test_past_arrival_returns_specific_recoverable_arabic_message() -> None:
+    provider = FakeProvider([])
+    service, _, tool_audit = orchestrator(
+        provider,
+        registry=availability_registry(reject_past_date=True),
+    )
+
+    result = asyncio.run(
+        service.handle(
+            envelope("أريد غرفة من 2020-01-01 إلى 2020-01-03 لشخصين"),
+            routing(IntentCode.ROOM_AVAILABILITY),
+            trusted_tool_arguments={
+                "check_in": "2020-01-01",
+                "check_out": "2020-01-03",
+                "adults": 2,
+                "children": 0,
+            },
+        )
+    )
+
+    assert result.reason_code == "check_in_in_past"
+    assert "تاريخ الوصول يجب أن يكون اليوم أو لاحقاً" in result.answer.text
+    assert "لم تُنفذ العملية" not in result.answer.text
+    assert provider.requests == []
+    assert tool_audit.records[0].error_code == "check_in_in_past"
+
+
+def test_successful_availability_fallback_is_concise_and_never_dumps_json() -> None:
+    provider = FakeProvider([LLMUnavailableError("offline")])
+    service, _, tool_audit = orchestrator(
+        provider,
+        registry=availability_registry(),
+    )
+
+    result = asyncio.run(
+        service.handle(
+            envelope(
+                "أريد غرفة من 2026-08-10 إلى 2026-08-12 لشخصين",
+                language="ar",
+            ),
+            routing(IntentCode.ROOM_AVAILABILITY),
+            trusted_tool_arguments={
+                "check_in": "2026-08-10",
+                "check_out": "2026-08-12",
+                "adults": 2,
+                "children": 0,
+            },
+        )
+    )
+
+    assert result.reason_code == "tool_result_model_fallback"
+    assert result.tool_executed is True
+    assert "غرفة ديلوكس" in result.answer.text
+    assert "wifi" in result.answer.text
+    assert "breakfast" in result.answer.text
+    assert "balcony" not in result.answer.text
+    assert "{" not in result.answer.text
+    assert '"options"' not in result.answer.text
+    assert tool_audit.records[0].result_status.value == "succeeded"
+
+
 def test_valid_tool_proposal_executes_then_returns_validated_structured_answer() -> None:
     final = GroundedAnswer(
         language="ar",
@@ -597,3 +704,63 @@ def test_knowledge_answer_cannot_cite_evidence_outside_allow_list() -> None:
     assert result.reason_code == "knowledge_model_fallback"
     assert result.answer.evidence_ids == (str(evidence_id),)
     assert result.answer.text == retrieved.evidence[0].text
+
+
+def test_airport_transfer_answer_is_grounded_in_retrieved_evidence_without_tool_call() -> None:
+    evidence_id = UUID("90000000-0000-0000-0000-000000000002")
+    query = (
+        "Does the hotel offer airport pick-up services from Damascus International "
+        "Airport, and how far in advance do I need to book?"
+    )
+    retrieved = RetrievalResult(
+        query=query,
+        index_version_id=uuid4(),
+        evidence=(
+            RetrievalEvidence(
+                chunk_id=evidence_id,
+                document_id=uuid4(),
+                revision_id=uuid4(),
+                title="Airport transfer",
+                language="en",
+                text=(
+                    "Private transfers between Damascus International Airport and the hotel "
+                    "can be arranged at least 24 hours in advance. The service is chargeable."
+                ),
+                score=0.91,
+                rank=1,
+            ),
+        ),
+        sufficient=True,
+        reason_code="evidence_found",
+    )
+    grounded = GroundedAnswer(
+        language="en",
+        text=(
+            "Yes. A chargeable private transfer can be arranged at least 24 hours "
+            "in advance."
+        ),
+        basis=AnswerBasis.KNOWLEDGE,
+        evidence_ids=(str(evidence_id),),
+    )
+    provider = FakeProvider([response(text=grounded.model_dump_json())])
+    service, llm_audit, tool_audit = orchestrator(
+        provider,
+        FakeRetrieval(retrieved),
+    )
+
+    result = asyncio.run(
+        service.handle(
+            envelope(query, language="en"),
+            routing(
+                IntentCode.HOTEL_INFO,
+                decision=RoutingDecision.KNOWLEDGE_CANDIDATE,
+            ),
+        )
+    )
+
+    assert result.answer == grounded
+    assert result.reason_code == "grounded_knowledge_answer"
+    assert result.tool_executed is False
+    assert result.model_used is True
+    assert len(llm_audit.records) == 1
+    assert tool_audit.records == []

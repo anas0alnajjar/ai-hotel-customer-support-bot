@@ -726,6 +726,40 @@ def _clear_completed_service_state(
     )
 
 
+def _recover_availability_state(
+    state: ConversationState,
+    reason_code: str,
+) -> ConversationState:
+    """Clear only invalid availability slots so the workflow can continue."""
+
+    if reason_code in {
+        "check_in_in_past",
+        "check_in_too_far",
+    }:
+        return state.model_copy(
+            update={
+                "check_in": None,
+                "check_out": None,
+            }
+        )
+    if reason_code in {
+        "invalid_date_range",
+        "stay_too_long",
+    }:
+        return state.model_copy(
+            update={
+                "check_out": None,
+            }
+        )
+    if reason_code == "adults_required":
+        return state.model_copy(
+            update={
+                "adults": None,
+            }
+        )
+    return state
+
+
 def _command_reply(
     command: str,
     language: SupportedLanguage,
@@ -1144,6 +1178,17 @@ class HotelGuestProcessor:
                 parameters,
             ),
         )
+
+        if workflow is ActiveWorkflow.AVAILABILITY and not result.tool_executed:
+            recovered_state = _recover_availability_state(
+                updated_state,
+                result.reason_code,
+            )
+            if recovered_state != updated_state:
+                await self._conversations.update_state(
+                    conversation_id,
+                    recovered_state,
+                )
 
         if result.tool_executed:
             completed_state = (

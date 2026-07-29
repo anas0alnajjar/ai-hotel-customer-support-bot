@@ -179,6 +179,15 @@ def test_admin_text_masks_high_risk_identifiers() -> None:
     assert "+963 944 123 456" not in masked
 
 
+def test_admin_text_preserves_iso_dates_while_masking_phone_numbers() -> None:
+    masked = redact_admin_text("Arrival 2026-08-10, departure 2026-08-12, phone +963 944 123 456")
+
+    assert "2026-08-10" in masked
+    assert "2026-08-12" in masked
+    assert "+963 944 123 456" not in masked
+    assert "[PHONE_REDACTED]" in masked
+
+
 def test_auth_service_has_generic_failure_rate_limit_and_rbac() -> None:
     async def exercise() -> None:
         admin = principal()

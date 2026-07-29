@@ -37,13 +37,15 @@ def test_cpu_runtime_pins_cpu_only_torch_before_embedding_dependencies() -> None
     assert dockerfile.index("requirements.cpu.txt") < dockerfile.index("requirements.runtime.txt")
 
 
-def test_docker_context_excludes_tests_and_local_runtime_data() -> None:
+def test_docker_context_excludes_runtime_data_except_frozen_evaluation_inputs() -> None:
     dockerignore = (BACKEND_ROOT / ".dockerignore").read_text(encoding="utf-8").splitlines()
 
     assert "tests" in dockerignore
     assert "data" in dockerignore
-    assert "reports" in dockerignore
-    assert "artifacts" in dockerignore
+    assert "reports/*" in dockerignore
+    assert "!reports/knowledge-retrieval-v1.json" in dockerignore
+    assert "artifacts/*" in dockerignore
+    assert "!artifacts/evaluation/intent-evaluation-v1.json" in dockerignore
 
 
 def test_runtime_image_packages_alembic_configuration_and_migrations() -> None:
@@ -56,6 +58,10 @@ def test_runtime_image_packages_alembic_configuration_and_migrations() -> None:
     assert "test -f /app/alembic.ini" in dockerfile
     assert "test -f /app/migrations/env.py" in dockerfile
     assert "test -d /app/migrations/versions" in dockerfile
+    assert "COPY artifacts/evaluation ./artifacts/evaluation" in dockerfile
+    assert "COPY reports ./reports" in dockerfile
+    assert "test -f /app/artifacts/evaluation/intent-evaluation-v1.json" in dockerfile
+    assert "test -f /app/reports/knowledge-retrieval-v1.json" in dockerfile
     assert "script_location = %(here)s/migrations" in alembic_configuration
     assert "working_dir: /app" in hostinger_compose
     assert "image: hotel-support-bot-hostinger-backend:latest" in hostinger_compose
