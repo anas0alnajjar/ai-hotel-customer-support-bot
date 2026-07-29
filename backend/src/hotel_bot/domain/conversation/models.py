@@ -29,6 +29,8 @@ class ConversationState(BaseModel):
     room_type_code: str | None = Field(default=None, min_length=1, max_length=32)
     masked_booking_reference: str | None = Field(default=None, min_length=3, max_length=32)
     room_number: str | None = Field(default=None, min_length=1, max_length=16)
+    service_category: str | None = Field(default=None, min_length=1, max_length=64)
+    service_description: str | None = Field(default=None, min_length=1, max_length=1000)
     active_request_tracking_code: str | None = Field(default=None, min_length=3, max_length=32)
     active_workflow: ActiveWorkflow | None = None
 

@@ -160,6 +160,27 @@ def test_explicit_availability_question_uses_required_parameter_metadata(
     )
 
 
+def test_existing_booking_phrase_is_distinct_from_room_availability() -> None:
+    router = SafeIntentRouter(
+        FixedPredictor(
+            prediction(
+                IntentCode.ROOM_AVAILABILITY,
+                0.99,
+                0.90,
+            )
+        )
+    )
+
+    result = router.route("بدي تابع حجزي", "ar")
+
+    assert result.prediction.intent is IntentCode.BOOKING_LOOKUP
+    assert result.decision is RoutingDecision.CLARIFY
+    assert result.missing_parameters == (
+        "booking_reference",
+        "verification_value",
+    )
+
+
 def test_state_changing_prediction_requires_confirmation_and_orchestrator() -> None:
     router = SafeIntentRouter(
         FixedPredictor(prediction(IntentCode.MAINTENANCE_REQUEST, 0.98, 0.90))

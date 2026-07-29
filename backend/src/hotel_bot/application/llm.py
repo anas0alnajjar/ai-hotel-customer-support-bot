@@ -184,6 +184,67 @@ PARAMETER_LABELS = {
     },
 }
 
+CLARIFICATION_QUESTIONS = {
+    "ar": {
+        (
+            "check_in",
+            "check_out",
+            "adults",
+        ): "ما تاريخ الوصول والمغادرة، وكم عدد البالغين؟",
+        (
+            "check_in",
+            "check_out",
+        ): "ما تاريخ الوصول والمغادرة؟",
+        ("check_in",): "ما تاريخ الوصول؟",
+        ("check_out",): "ما تاريخ المغادرة؟",
+        ("adults",): "كم عدد البالغين؟",
+        (
+            "booking_reference",
+            "verification_value",
+        ): "ما مرجع الحجز ورمز التحقق؟",
+        (
+            "room_number",
+            "category",
+            "description",
+        ): "ما رقم الغرفة ونوع الخدمة، وما تفاصيل الطلب؟",
+        (
+            "room_number",
+            "description",
+        ): "ما رقم الغرفة، وما وصف المشكلة؟",
+        ("description",): "ما تفاصيل الطلب المطلوب؟",
+        ("category",): "ما نوع الخدمة أو المشكلة؟",
+    },
+    "en": {
+        (
+            "check_in",
+            "check_out",
+            "adults",
+        ): "What are the check-in and check-out dates, and how many adults?",
+        (
+            "check_in",
+            "check_out",
+        ): "What are the check-in and check-out dates?",
+        ("check_in",): "What is the check-in date?",
+        ("check_out",): "What is the check-out date?",
+        ("adults",): "How many adults will stay?",
+        (
+            "booking_reference",
+            "verification_value",
+        ): "What are the booking reference and verification code?",
+        (
+            "room_number",
+            "category",
+            "description",
+        ): "What are the room number, service category, and request details?",
+        (
+            "room_number",
+            "description",
+        ): "What are the room number and problem description?",
+        ("description",): "What request details should I include?",
+        ("category",): "What type of service or issue is this?",
+    },
+}
+
 
 class HybridOrchestrator:
     """Routes deterministic, RAG, and tool flows while keeping Gemini non-authoritative."""
@@ -421,12 +482,19 @@ class HybridOrchestrator:
                 or INTENT_DEFINITIONS[routing.prediction.intent].required_parameters
             )
             if missing_parameters:
-                missing = ", ".join(labels.get(name, name) for name in missing_parameters)
-                text = (
-                    f"أحتاج المعلومات التالية للمتابعة: {missing}."
-                    if language == "ar"
-                    else f"I need these details to continue: {missing}."
+                text = CLARIFICATION_QUESTIONS[language].get(
+                    missing_parameters
                 )
+                if text is None:
+                    missing = ", ".join(
+                        labels.get(name, name)
+                        for name in missing_parameters
+                    )
+                    text = (
+                        f"ما المعلومات التالية: {missing}؟"
+                        if language == "ar"
+                        else f"Please provide: {missing}."
+                    )
             else:
                 text = (
                     "هل يمكنك توضيح طلبك بمزيد من التفاصيل؟"

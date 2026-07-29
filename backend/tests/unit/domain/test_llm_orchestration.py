@@ -270,8 +270,8 @@ def test_confirmation_gate_prevents_model_and_tool_calls() -> None:
             "ar",
             "في حجوزات؟",
             (
-                "تاريخ الوصول بصيغة YYYY-MM-DD",
-                "تاريخ المغادرة بصيغة YYYY-MM-DD",
+                "تاريخ الوصول",
+                "المغادرة",
                 "عدد البالغين",
             ),
         ),
@@ -279,9 +279,9 @@ def test_confirmation_gate_prevents_model_and_tool_calls() -> None:
             "en",
             "Are there bookings available?",
             (
-                "check-in date (YYYY-MM-DD)",
-                "check-out date (YYYY-MM-DD)",
-                "number of adults",
+                "check-in",
+                "check-out",
+                "how many adults",
             ),
         ),
     ],
@@ -305,7 +305,7 @@ def test_empty_availability_clarification_uses_taxonomy_required_parameters(
     )
 
     assert all(label in result.answer.text for label in expected_labels)
-    assert not result.answer.text.rstrip().endswith(": .")
+    assert result.answer.text.endswith(("?", "؟"))
     assert provider.requests == []
     assert llm_audit.records == []
     assert tool_audit.records == []

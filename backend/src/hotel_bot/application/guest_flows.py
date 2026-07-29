@@ -24,6 +24,7 @@ from hotel_bot.domain.intent.enums import (
     RoutingDecision,
 )
 from hotel_bot.domain.intent.models import IntentPrediction, RoutingResult
+from hotel_bot.domain.intent.normalization import normalize_text
 from hotel_bot.domain.intent.taxonomy import INTENT_DEFINITIONS
 from hotel_bot.domain.telegram.models import (
     TelegramGuestReply,
@@ -46,10 +47,11 @@ ROOM_PATTERN = re.compile(
     r"(?:room|الغرف(?:ة|ه))\s*[:#-]?\s*([A-Za-z0-9-]{1,16})",
     re.IGNORECASE,
 )
+LEADING_ROOM_PATTERN = re.compile(r"^\s*(\d{1,4})\b")
 ADULTS_PATTERN = re.compile(
     (
         r"(?:(?:adults?|بالغ(?:ين)?)\s*[:=-]?\s*(\d{1,2})"
-        r"|(\d{1,2})\s*(?:adults?|بالغ(?:ين)?))"
+        r"|(\d{1,2})\s*(?:adults?|بالغ(?:ين)?|أشخاص|اشخاص|شخص))"
     ),
     re.IGNORECASE,
 )
@@ -67,6 +69,18 @@ VERIFY_PATTERN = re.compile(
         r"\s*[:=#-]?\s*([A-Za-z0-9_-]{4,128})"
     ),
     re.IGNORECASE,
+)
+GENERIC_ROOM_SERVICE_REQUESTS = frozenset(
+    {
+        "بدي خدمة الطعام الي الغرف",
+        "بدي خدمة الطعام الي الغرفة",
+        "اريد خدمة الطعام الي الغرف",
+        "اريد خدمة الطعام الي الغرفة",
+        "خدمة الطعام الي الغرف",
+        "خدمة الطعام الي الغرفة",
+        "i need room service",
+        "room service",
+    }
 )
 
 
@@ -237,6 +251,18 @@ def _first(
     )
 
 
+def _service_description(text: str) -> str | None:
+    normalized = normalize_text(text)
+    without_leading_room = re.sub(
+        r"^\d{1,4}\s+",
+        "",
+        normalized,
+    )
+    if without_leading_room in GENERIC_ROOM_SERVICE_REQUESTS:
+        return None
+    return redact_sensitive_text(text)
+
+
 def extract_parameters(
     text: str,
     state: ConversationState,
@@ -267,6 +293,8 @@ def extract_parameters(
         ADULTS_PATTERN,
         text,
     )
+    if adults is None and "شخصين" in normalize_text(text):
+        adults = "2"
     children = _first(
         CHILDREN_PATTERN,
         text,
@@ -293,8 +321,20 @@ def extract_parameters(
             ROOM_PATTERN,
             text,
         )
-        or state.room_number
     )
+    if (
+        room_number is None
+        and state.active_workflow
+        in {
+            ActiveWorkflow.ROOM_SERVICE,
+            ActiveWorkflow.MAINTENANCE,
+        }
+    ):
+        room_number = _first(
+            LEADING_ROOM_PATTERN,
+            text,
+        )
+    room_number = room_number or state.room_number
 
     if room_number:
         values["room_number"] = room_number
@@ -342,12 +382,13 @@ def extract_parameters(
             "meal",
             "dinner",
             "breakfast",
+            "طعام",
             "وجبة",
             "عشاء",
             "فطور",
         )
     ):
-        category = "food"
+        category = "food_and_beverage"
 
     elif any(
         token in normalized
@@ -384,11 +425,15 @@ def extract_parameters(
         category = "plumbing"
 
     else:
-        category = "general"
+        category = state.service_category or "general"
 
     values["category"] = category
 
-    values["description"] = redact_sensitive_text(text)
+    description = _service_description(text)
+    if description:
+        values["description"] = description
+    elif state.service_description:
+        values["description"] = state.service_description
 
     values["urgency"] = (
         "emergency"
@@ -567,6 +612,92 @@ def _resolve_service_request_routing(
     )
 
 
+def _state_with_parameters(
+    state: ConversationState,
+    intent: IntentCode,
+    parameters: Mapping[str, object],
+    *,
+    active_workflow: ActiveWorkflow | None,
+) -> ConversationState:
+    """Persist only bounded, non-secret parameters for the active intent."""
+
+    updates: dict[str, object] = {
+        "active_workflow": active_workflow,
+    }
+
+    if intent is IntentCode.ROOM_AVAILABILITY:
+        for name in (
+            "check_in",
+            "check_out",
+            "adults",
+            "children",
+            "room_type_code",
+        ):
+            value = parameters.get(name)
+            if value is not None and value != "":
+                updates[name] = value
+
+    if intent in {
+        IntentCode.ROOM_SERVICE_REQUEST,
+        IntentCode.MAINTENANCE_REQUEST,
+    }:
+        room_number = parameters.get("room_number")
+        if room_number is not None and room_number != "":
+            updates["room_number"] = str(room_number)
+
+        category = parameters.get("category")
+        if category not in {
+            None,
+            "",
+            "general",
+        }:
+            updates["service_category"] = str(category)
+
+        description = parameters.get("description")
+        if description is not None and description != "":
+            updates["service_description"] = str(description)[:1000]
+
+    if intent is IntentCode.SERVICE_REQUEST_STATUS:
+        tracking_code = parameters.get("tracking_code")
+        if tracking_code is not None and tracking_code != "":
+            updates["active_request_tracking_code"] = str(tracking_code)
+
+    return state.model_copy(update=updates)
+
+
+def _clear_completed_service_state(
+    state: ConversationState,
+) -> ConversationState:
+    return state.model_copy(
+        update={
+            "active_workflow": None,
+            "room_number": None,
+            "service_category": None,
+            "service_description": None,
+        }
+    )
+
+
+def _command_reply(
+    command: str,
+    language: SupportedLanguage,
+) -> str:
+    if command in {
+        "start",
+        "help",
+    }:
+        return ConversationService.help_text(language)
+    if command == "new":
+        return (
+            "بدأت محادثة جديدة. كيف يمكنني مساعدتك؟"
+            if language == "ar"
+            else "A new conversation has started. How may I help?"
+        )
+    if command == "language_ar":
+        return "تم تغيير اللغة إلى العربية."
+    return "Language changed to English."
+
+
 class HotelGuestProcessor:
     def __init__(
         self,
@@ -709,8 +840,9 @@ class HotelGuestProcessor:
             "language_ar",
             "language_en",
         }:
-            reply_text = ConversationService.help_text(
-                language
+            reply_text = _command_reply(
+                message.command,
+                language,
             )
 
         else:
@@ -804,11 +936,7 @@ class HotelGuestProcessor:
 
             await self._conversations.update_state(
                 conversation_id,
-                state.model_copy(
-                    update={
-                        "active_workflow": None,
-                    }
-                ),
+                _clear_completed_service_state(state),
             )
 
             return (
@@ -880,9 +1008,32 @@ class HotelGuestProcessor:
         )
 
         if (
-            confirmed
-            and state.active_workflow is not None
+            not confirmed
+            and state.active_workflow
+            in {
+                ActiveWorkflow.BOOKING_LOOKUP,
+                ActiveWorkflow.REQUEST_STATUS,
+            }
+            and context.turns
         ):
+            previous = extract_parameters(
+                context.turns[-1].inbound.text,
+                ConversationState(
+                    language=state.language,
+                ),
+                idempotency_seed=str(
+                    context.turns[-1].inbound.id
+                ),
+            )
+            for name, value in previous.items():
+                if (
+                    name not in parameters
+                    or parameters[name] is None
+                    or parameters[name] == ""
+                ):
+                    parameters[name] = value
+
+        if state.active_workflow is not None:
             routing = _forced_routing(
                 WORKFLOW_INTENT[
                     state.active_workflow
@@ -907,19 +1058,34 @@ class HotelGuestProcessor:
             routing.prediction.intent
         )
 
+        active_workflow = state.active_workflow
         if (
-            routing.requires_confirmation
+            not confirmed
             and workflow is not None
-            and not confirmed
+            and routing.decision
+            in {
+                RoutingDecision.CLARIFY,
+                RoutingDecision.ACTION_CANDIDATE,
+            }
         ):
+            active_workflow = workflow
+
+        updated_state = _state_with_parameters(
+            state,
+            routing.prediction.intent,
+            parameters,
+            active_workflow=active_workflow,
+        )
+        if updated_state != state:
             await self._conversations.update_state(
                 conversation_id,
-                state.model_copy(
-                    update={
-                        "active_workflow": workflow,
-                    }
-                ),
+                updated_state,
             )
+        context = context.model_copy(
+            update={
+                "state": updated_state,
+            }
+        )
 
         result = await self._orchestrator.handle(
             sanitize_context(context),
@@ -931,17 +1097,25 @@ class HotelGuestProcessor:
             ),
         )
 
-        if (
-            confirmed
-            and result.tool_executed
-        ):
-            await self._conversations.update_state(
-                conversation_id,
-                state.model_copy(
+        if result.tool_executed:
+            completed_state = (
+                _clear_completed_service_state(
+                    updated_state
+                )
+                if workflow
+                in {
+                    ActiveWorkflow.ROOM_SERVICE,
+                    ActiveWorkflow.MAINTENANCE,
+                }
+                else updated_state.model_copy(
                     update={
                         "active_workflow": None,
                     }
-                ),
+                )
+            )
+            await self._conversations.update_state(
+                conversation_id,
+                completed_state,
             )
 
         answer_text = result.answer.text

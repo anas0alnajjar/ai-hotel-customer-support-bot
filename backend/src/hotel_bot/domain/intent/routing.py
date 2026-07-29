@@ -59,12 +59,35 @@ AVAILABILITY_QUESTIONS = frozenset(
     {
         "في حجوزات",
         "هل في حجوزات",
+        "في غرف فاضية",
+        "هل في غرف فاضية",
         "في غرف متاحة",
         "هل في غرف متاحة",
         "هل توجد غرف متاحة",
+        "بدي احجز غرفة",
+        "اريد احجز غرفة",
         "any availability",
         "any rooms available",
         "are there rooms available",
+        "do you have rooms available",
+        "i want to book a room",
+    }
+)
+BOOKING_LOOKUP_QUESTIONS = frozenset(
+    {
+        "بدي تابع حجزي",
+        "اريد متابعة حجزي",
+        "check my existing reservation",
+        "track my existing booking",
+    }
+)
+ROOM_SERVICE_QUESTIONS = frozenset(
+    {
+        "بدي خدمة الطعام الي الغرف",
+        "بدي خدمة الطعام الي الغرفة",
+        "اريد خدمة الطعام الي الغرف",
+        "اريد خدمة الطعام الي الغرفة",
+        "i need room service",
     }
 )
 
@@ -123,9 +146,18 @@ class SafeIntentRouter:
                 reason_code="deterministic_greeting",
             )
 
-        prediction = (
-            _rule_prediction(IntentCode.ROOM_AVAILABILITY)
+        alias_intent = (
+            IntentCode.ROOM_AVAILABILITY
             if normalized in AVAILABILITY_QUESTIONS
+            else IntentCode.BOOKING_LOOKUP
+            if normalized in BOOKING_LOOKUP_QUESTIONS
+            else IntentCode.ROOM_SERVICE_REQUEST
+            if normalized in ROOM_SERVICE_QUESTIONS
+            else None
+        )
+        prediction = (
+            _rule_prediction(alias_intent)
+            if alias_intent is not None
             else self._classifier.predict(text, language)
         )
         if prediction.intent is IntentCode.HUMAN_ESCALATION:

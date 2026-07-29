@@ -24,7 +24,11 @@ from hotel_bot.domain.intent.classifier import (
     ALGORITHM_VERSION,
     NaiveBayesIntentClassifier,
 )
-from hotel_bot.domain.intent.enums import DatasetSplit, IntentCode
+from hotel_bot.domain.intent.enums import (
+    DatasetSplit,
+    IntentCode,
+    RoutingDecision,
+)
 from hotel_bot.domain.intent.models import RoutingResult
 from hotel_bot.domain.intent.routing import SafeIntentRouter
 from hotel_bot.domain.llm.enums import AnswerBasis
@@ -159,6 +163,30 @@ class RecordingOrchestrator:
             )
         )
 
+        if routing.decision is RoutingDecision.CLARIFY:
+            labels = {
+                "check_in": "تاريخ الوصول",
+                "check_out": "تاريخ المغادرة",
+                "adults": "عدد البالغين",
+                "booking_reference": "مرجع الحجز",
+                "verification_value": "رمز التحقق",
+                "room_number": "رقم الغرفة",
+                "category": "نوع الخدمة",
+                "description": "تفاصيل الطلب",
+            }
+            missing = "، ".join(
+                labels[name]
+                for name in routing.missing_parameters
+            )
+            return OrchestrationResult(
+                answer=GroundedAnswer(
+                    language=context.state.language,
+                    text=f"يرجى تزويدي بـ {missing}؟",
+                    basis=AnswerBasis.CONTROLLED,
+                ),
+                reason_code="clarification_required",
+            )
+
         if (
             routing.requires_confirmation
             and not confirmed
@@ -189,7 +217,13 @@ class RecordingOrchestrator:
                 answer=GroundedAnswer(
                     language=context.state.language,
                     text=(
-                        "تم إنشاء الطلب."
+                        "تم إنشاء الطلب SR-TEST0001."
+                        if (
+                            context.state.language == "ar"
+                            and routing.prediction.intent
+                            is IntentCode.MAINTENANCE_REQUEST
+                        )
+                        else "تم إنشاء الطلب."
                         if context.state.language == "ar"
                         else "The request was created."
                     ),
@@ -200,6 +234,24 @@ class RecordingOrchestrator:
                 ),
                 tool_executed=True,
                 model_used=True,
+                reason_code="validated_tool_answer",
+            )
+
+        if routing.decision is RoutingDecision.ACTION_CANDIDATE:
+            return OrchestrationResult(
+                answer=GroundedAnswer(
+                    language=context.state.language,
+                    text=(
+                        "تم التحقق من التوفر."
+                        if context.state.language == "ar"
+                        else "Availability checked."
+                    ),
+                    basis=AnswerBasis.TOOL,
+                    tool_names=(
+                        "check_room_availability",
+                    ),
+                ),
+                tool_executed=True,
                 reason_code="validated_tool_answer",
             )
 
@@ -227,6 +279,10 @@ def message(
 ) -> TelegramInboundMessage:
     if text == "/start":
         command = "start"
+    elif text == "/help":
+        command = "help"
+    elif text == "/new":
+        command = "new"
     elif text == "/ar":
         command = "language_ar"
     elif text == "/en":
@@ -383,6 +439,33 @@ def test_mysql_guest_journey_supports_inline_confirmation_and_cancellation() -> 
                     ),
                 )
 
+        async def latest_conversation() -> Conversation:
+            async with manager.session() as session:
+                conversation = await session.scalar(
+                    select(
+                        Conversation
+                    )
+                    .join(
+                        Guest,
+                        Guest.id
+                        == Conversation.guest_id,
+                    )
+                    .where(
+                        Guest.telegram_user_hash
+                        == telegram_identity_hash(
+                            USER_ID,
+                            PEPPER,
+                        ),
+                        Conversation.status
+                        == "open",
+                    )
+                    .order_by(
+                        Conversation.started_at.desc()
+                    )
+                )
+                assert conversation is not None
+                return conversation
+
         try:
             await remove_guest(manager)
 
@@ -484,6 +567,8 @@ def test_mysql_guest_journey_supports_inline_confirmation_and_cancellation() -> 
             assert replayed_start.text == started.text
 
             assert switched.language == "ar"
+            assert switched.text == "تم تغيير اللغة إلى العربية."
+            assert "مساعد فندق" not in switched.text
 
             assert greeting.language == "ar"
             assert greeting.text == "أهلاً بك"
@@ -603,7 +688,7 @@ def test_mysql_guest_journey_supports_inline_confirmation_and_cancellation() -> 
             )
 
             assert maintenance_proposed.reply_markup is not None
-            assert maintenance_confirmed.text == "تم إنشاء الطلب."
+            assert "SR-" in maintenance_confirmed.text
 
             maintenance_calls = [
                 call
@@ -619,6 +704,179 @@ def test_mysql_guest_journey_supports_inline_confirmation_and_cancellation() -> 
             assert maintenance_calls[0][2] is not None
             assert maintenance_calls[0][2]["room_number"] == "304"
             assert maintenance_calls[0][2]["category"] == "hvac"
+
+            english = await process_message(
+                message(
+                    7010,
+                    "/en",
+                    language="ar",
+                )
+            )
+            arabic = await process_message(
+                message(
+                    7011,
+                    "/ar",
+                    language="en",
+                )
+            )
+
+            assert english.text == "Language changed to English."
+            assert arabic.text == "تم تغيير اللغة إلى العربية."
+            assert "virtual assistant" not in english.text
+            assert "مساعد فندق" not in arabic.text
+
+            await process_message(
+                message(
+                    7012,
+                    "/new",
+                    language="ar",
+                )
+            )
+            availability = await process_message(
+                message(
+                    7013,
+                    "في حجوزات؟",
+                    language="ar",
+                )
+            )
+            availability_call = orchestrator.calls[-1]
+
+            assert (
+                availability_call[0].prediction.intent
+                is IntentCode.ROOM_AVAILABILITY
+            )
+            assert availability_call[0].missing_parameters == (
+                "check_in",
+                "check_out",
+                "adults",
+            )
+            assert availability.text
+            assert "تاريخ الوصول" in availability.text
+            assert "مرجع الحجز" not in availability.text
+            assert "رمز التحقق" not in availability.text
+
+            await process_message(
+                message(
+                    7014,
+                    "/new",
+                    language="ar",
+                )
+            )
+            lookup = await process_message(
+                message(
+                    7015,
+                    "بدي تابع حجزي",
+                    language="ar",
+                )
+            )
+            lookup_call = orchestrator.calls[-1]
+
+            assert (
+                lookup_call[0].prediction.intent
+                is IntentCode.BOOKING_LOOKUP
+            )
+            assert lookup_call[0].missing_parameters == (
+                "booking_reference",
+                "verification_value",
+            )
+            assert "مرجع الحجز" in lookup.text
+            assert "رمز التحقق" in lookup.text
+
+            await process_message(
+                message(
+                    7016,
+                    "/new",
+                    language="ar",
+                )
+            )
+            await process_message(
+                message(
+                    7017,
+                    "بدي احجز غرفة",
+                    language="ar",
+                )
+            )
+            dates_reply = await process_message(
+                message(
+                    7018,
+                    "2026-08-10 إلى 2026-08-12",
+                    language="ar",
+                )
+            )
+            dates_state = (
+                await latest_conversation()
+            ).context_state_json
+
+            assert dates_state is not None
+            assert dates_state["check_in"] == "2026-08-10"
+            assert dates_state["check_out"] == "2026-08-12"
+            assert "عدد البالغين" in dates_reply.text
+            assert "تاريخ الوصول" not in dates_reply.text
+
+            availability_result = await process_message(
+                message(
+                    7019,
+                    "شخصين",
+                    language="ar",
+                )
+            )
+            merged_state = (
+                await latest_conversation()
+            ).context_state_json
+
+            assert availability_result.text == "تم التحقق من التوفر."
+            assert merged_state is not None
+            assert merged_state["check_in"] == "2026-08-10"
+            assert merged_state["check_out"] == "2026-08-12"
+            assert merged_state["adults"] == 2
+
+            await process_message(
+                message(
+                    7020,
+                    "/new",
+                    language="ar",
+                )
+            )
+            await process_message(
+                message(
+                    7021,
+                    "بدي خدمة الطعام إلى الغرفة",
+                    language="ar",
+                )
+            )
+            service_followup = await process_message(
+                message(
+                    7022,
+                    "100 خدمة الطعام إلى الغرف",
+                    language="ar",
+                )
+            )
+            service_call = orchestrator.calls[-1]
+
+            assert (
+                service_call[0].prediction.intent
+                is IntentCode.ROOM_SERVICE_REQUEST
+            )
+            assert service_call[0].missing_parameters == (
+                "description",
+            )
+            assert service_call[2] is not None
+            assert service_call[2]["room_number"] == "100"
+            assert (
+                service_call[2]["category"]
+                == "food_and_beverage"
+            )
+            assert "رقم الغرفة" not in service_followup.text
+            assert "نوع الخدمة" not in service_followup.text
+            assert "تفاصيل الطلب" in service_followup.text
+
+            await process_message(
+                message(
+                    7023,
+                    "/new",
+                    language="ar",
+                )
+            )
 
             async with manager.session() as session:
                 conversation = await session.scalar(
@@ -670,7 +928,7 @@ def test_mysql_guest_journey_supports_inline_confirmation_and_cancellation() -> 
                     )
                 ).all()
 
-                assert len(updates) == 9
+                assert len(updates) == 23
 
         finally:
             await remove_guest(manager)
