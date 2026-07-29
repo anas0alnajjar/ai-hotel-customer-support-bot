@@ -245,6 +245,65 @@ CLARIFICATION_QUESTIONS = {
     },
 }
 
+INTENT_PARAMETER_QUESTIONS = {
+    "ar": {
+        IntentCode.ROOM_AVAILABILITY: {
+            "check_in": "ما تاريخ الوصول؟",
+            "check_out": "ما تاريخ المغادرة؟",
+            "adults": "كم عدد البالغين؟",
+        },
+        IntentCode.BOOKING_LOOKUP: {
+            "booking_reference": "ما مرجع الحجز؟",
+            "verification_value": "ما رمز التحقق؟",
+        },
+        IntentCode.ROOM_SERVICE_REQUEST: {
+            "room_number": "ما رقم الغرفة؟",
+            "category": (
+                "ما نوع الخدمة المطلوبة؟ "
+                "مثال: طعام، مشروبات، مناشف، تنظيف."
+            ),
+            "description": "ما الطلب الذي تريده بالتحديد؟",
+        },
+        IntentCode.MAINTENANCE_REQUEST: {
+            "room_number": "ما رقم الغرفة؟",
+            "category": "ما نوع مشكلة الصيانة؟",
+            "description": "ما وصف مشكلة الصيانة؟",
+        },
+        IntentCode.SERVICE_REQUEST_STATUS: {
+            "tracking_code": "ما رمز تتبع الطلب؟",
+            "verification_value": "ما رمز التحقق؟",
+        },
+    },
+    "en": {
+        IntentCode.ROOM_AVAILABILITY: {
+            "check_in": "What is the check-in date?",
+            "check_out": "What is the check-out date?",
+            "adults": "How many adults will stay?",
+        },
+        IntentCode.BOOKING_LOOKUP: {
+            "booking_reference": "What is the booking reference?",
+            "verification_value": "What is the verification code?",
+        },
+        IntentCode.ROOM_SERVICE_REQUEST: {
+            "room_number": "What is the room number?",
+            "category": (
+                "What service do you need? "
+                "For example: food, drinks, towels, or cleaning."
+            ),
+            "description": "What exactly would you like to request?",
+        },
+        IntentCode.MAINTENANCE_REQUEST: {
+            "room_number": "What is the room number?",
+            "category": "What type of maintenance issue is this?",
+            "description": "Please describe the maintenance issue.",
+        },
+        IntentCode.SERVICE_REQUEST_STATUS: {
+            "tracking_code": "What is the request tracking code?",
+            "verification_value": "What is the verification code?",
+        },
+    },
+}
+
 
 class HybridOrchestrator:
     """Routes deterministic, RAG, and tool flows while keeping Gemini non-authoritative."""
@@ -477,24 +536,28 @@ class HybridOrchestrator:
         language = context.state.language
         if routing.decision is RoutingDecision.CLARIFY:
             labels = PARAMETER_LABELS[language]
-            missing_parameters = (
+            all_missing_parameters = (
                 routing.missing_parameters
                 or INTENT_DEFINITIONS[routing.prediction.intent].required_parameters
             )
+            missing_parameters = all_missing_parameters[:1]
             if missing_parameters:
-                text = CLARIFICATION_QUESTIONS[language].get(
-                    missing_parameters
+                text = INTENT_PARAMETER_QUESTIONS[language].get(
+                    routing.prediction.intent,
+                    {},
+                ).get(
+                    missing_parameters[0]
                 )
                 if text is None:
-                    missing = ", ".join(
-                        labels.get(name, name)
-                        for name in missing_parameters
+                    text = CLARIFICATION_QUESTIONS[language].get(
+                        missing_parameters
                     )
-                    text = (
-                        f"ما المعلومات التالية: {missing}؟"
-                        if language == "ar"
-                        else f"Please provide: {missing}."
+                if text is None:
+                    missing = labels.get(
+                        missing_parameters[0],
+                        missing_parameters[0],
                     )
+                    text = f"ما {missing}؟" if language == "ar" else f"Please provide {missing}."
             else:
                 text = (
                     "هل يمكنك توضيح طلبك بمزيد من التفاصيل؟"

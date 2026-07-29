@@ -13,7 +13,10 @@ from sqlalchemy import delete, select
 from hotel_bot.application.conversations import ConversationService
 from hotel_bot.application.guest_flows import HotelGuestProcessor
 from hotel_bot.application.intent_routing import IntentRoutingService
-from hotel_bot.application.llm import HybridOrchestrator
+from hotel_bot.application.llm import (
+    INTENT_PARAMETER_QUESTIONS,
+    HybridOrchestrator,
+)
 from hotel_bot.application.telegram import telegram_identity_hash
 from hotel_bot.core.config import Settings
 from hotel_bot.domain.conversation.models import (
@@ -37,6 +40,7 @@ from hotel_bot.domain.llm.models import (
     OrchestrationResult,
 )
 from hotel_bot.domain.telegram.models import (
+    TelegramCommand,
     TelegramGuestReply,
     TelegramInboundCallback,
     TelegramInboundMessage,
@@ -164,24 +168,26 @@ class RecordingOrchestrator:
         )
 
         if routing.decision is RoutingDecision.CLARIFY:
-            labels = {
-                "check_in": "تاريخ الوصول",
-                "check_out": "تاريخ المغادرة",
-                "adults": "عدد البالغين",
-                "booking_reference": "مرجع الحجز",
-                "verification_value": "رمز التحقق",
-                "room_number": "رقم الغرفة",
-                "category": "نوع الخدمة",
-                "description": "تفاصيل الطلب",
-            }
-            missing = "، ".join(
-                labels[name]
-                for name in routing.missing_parameters
+            missing = routing.missing_parameters[:1]
+            text = (
+                INTENT_PARAMETER_QUESTIONS[
+                    context.state.language
+                ]
+                .get(
+                    routing.prediction.intent,
+                    {},
+                )
+                .get(
+                    missing[0]
+                    if missing
+                    else "",
+                    "يرجى توضيح الطلب.",
+                )
             )
             return OrchestrationResult(
                 answer=GroundedAnswer(
                     language=context.state.language,
-                    text=f"يرجى تزويدي بـ {missing}؟",
+                    text=text,
                     basis=AnswerBasis.CONTROLLED,
                 ),
                 reason_code="clarification_required",
@@ -277,6 +283,7 @@ def message(
     *,
     language: SupportedLanguage = "en",
 ) -> TelegramInboundMessage:
+    command: TelegramCommand | None
     if text == "/start":
         command = "start"
     elif text == "/help":
@@ -752,6 +759,8 @@ def test_mysql_guest_journey_supports_inline_confirmation_and_cancellation() -> 
             )
             assert availability.text
             assert "تاريخ الوصول" in availability.text
+            assert "تاريخ المغادرة" not in availability.text
+            assert "عدد البالغين" not in availability.text
             assert "مرجع الحجز" not in availability.text
             assert "رمز التحقق" not in availability.text
 
@@ -780,7 +789,7 @@ def test_mysql_guest_journey_supports_inline_confirmation_and_cancellation() -> 
                 "verification_value",
             )
             assert "مرجع الحجز" in lookup.text
-            assert "رمز التحقق" in lookup.text
+            assert "رمز التحقق" not in lookup.text
 
             await process_message(
                 message(
@@ -799,7 +808,7 @@ def test_mysql_guest_journey_supports_inline_confirmation_and_cancellation() -> 
             dates_reply = await process_message(
                 message(
                     7018,
-                    "2026-08-10 إلى 2026-08-12",
+                    "2026-01-01",
                     language="ar",
                 )
             )
@@ -808,15 +817,24 @@ def test_mysql_guest_journey_supports_inline_confirmation_and_cancellation() -> 
             ).context_state_json
 
             assert dates_state is not None
-            assert dates_state["check_in"] == "2026-08-10"
-            assert dates_state["check_out"] == "2026-08-12"
-            assert "عدد البالغين" in dates_reply.text
+            assert dates_state["check_in"] == "2026-01-01"
+            assert "check_out" not in dates_state
+            assert dates_reply.text == "ما تاريخ المغادرة؟"
             assert "تاريخ الوصول" not in dates_reply.text
+
+            adults_reply = await process_message(
+                message(
+                    7024,
+                    "2026-01-10",
+                    language="ar",
+                )
+            )
+            assert adults_reply.text == "كم عدد البالغين؟"
 
             availability_result = await process_message(
                 message(
                     7019,
-                    "شخصين",
+                    "14",
                     language="ar",
                 )
             )
@@ -826,9 +844,40 @@ def test_mysql_guest_journey_supports_inline_confirmation_and_cancellation() -> 
 
             assert availability_result.text == "تم التحقق من التوفر."
             assert merged_state is not None
-            assert merged_state["check_in"] == "2026-08-10"
-            assert merged_state["check_out"] == "2026-08-12"
-            assert merged_state["adults"] == 2
+            assert merged_state["check_in"] == "2026-01-01"
+            assert merged_state["check_out"] == "2026-01-10"
+            assert merged_state["adults"] == 14
+
+            await process_message(
+                message(
+                    7030,
+                    "/new",
+                    language="ar",
+                )
+            )
+            await process_message(
+                message(
+                    7031,
+                    "في حجوزات؟",
+                    language="ar",
+                )
+            )
+            multi_value_result = await process_message(
+                message(
+                    7032,
+                    "2026-01-01\n2026-01-10\n14",
+                    language="ar",
+                )
+            )
+            multi_value_state = (
+                await latest_conversation()
+            ).context_state_json
+
+            assert multi_value_result.text == "تم التحقق من التوفر."
+            assert multi_value_state is not None
+            assert multi_value_state["check_in"] == "2026-01-01"
+            assert multi_value_state["check_out"] == "2026-01-10"
+            assert multi_value_state["adults"] == 14
 
             await process_message(
                 message(
@@ -837,38 +886,50 @@ def test_mysql_guest_journey_supports_inline_confirmation_and_cancellation() -> 
                     language="ar",
                 )
             )
-            await process_message(
+            service_start = await process_message(
                 message(
                     7021,
-                    "بدي خدمة الطعام إلى الغرفة",
+                    "خدمة الطعام إلى الغرف",
                     language="ar",
                 )
             )
             service_followup = await process_message(
                 message(
                     7022,
-                    "100 خدمة الطعام إلى الغرف",
+                    "10 اريد طعام لغرفتي",
                     language="ar",
                 )
             )
             service_call = orchestrator.calls[-1]
 
+            assert service_start.text == "ما رقم الغرفة؟"
+            assert "مشكلة" not in service_start.text
             assert (
                 service_call[0].prediction.intent
                 is IntentCode.ROOM_SERVICE_REQUEST
             )
-            assert service_call[0].missing_parameters == (
-                "description",
-            )
+            assert service_call[0].missing_parameters == ()
             assert service_call[2] is not None
-            assert service_call[2]["room_number"] == "100"
+            assert service_call[2]["room_number"] == "10"
             assert (
                 service_call[2]["category"]
                 == "food_and_beverage"
             )
-            assert "رقم الغرفة" not in service_followup.text
-            assert "نوع الخدمة" not in service_followup.text
-            assert "تفاصيل الطلب" in service_followup.text
+            assert service_call[2]["description"] == "10 اريد طعام لغرفتي"
+            assert service_followup.reply_markup is not None
+            assert "مشكلة" not in service_followup.text
+
+            service_confirmed = await process_callback(
+                callback(
+                    7033,
+                    "workflow:confirm",
+                    language="ar",
+                    message_id=9004,
+                )
+            )
+
+            assert service_confirmed.text == "تم إنشاء الطلب."
+            assert "لم تُنفذ العملية" not in service_confirmed.text
 
             await process_message(
                 message(
@@ -928,7 +989,7 @@ def test_mysql_guest_journey_supports_inline_confirmation_and_cancellation() -> 
                     )
                 ).all()
 
-                assert len(updates) == 23
+                assert len(updates) == 28
 
         finally:
             await remove_guest(manager)

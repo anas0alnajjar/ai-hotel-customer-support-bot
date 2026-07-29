@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from hotel_bot.application.hotel_tools import (
     MaintenanceRequestInput,
+    RoomServiceRequestInput,
     ServiceRequestCreatedOutput,
 )
 from hotel_bot.application.knowledge import KnowledgeRetrievalService
@@ -121,6 +122,7 @@ def routing(
     *,
     decision: RoutingDecision = RoutingDecision.ACTION_CANDIDATE,
     requires_confirmation: bool = False,
+    missing_parameters: tuple[str, ...] = (),
 ) -> RoutingResult:
     return RoutingResult(
         prediction=IntentPrediction(
@@ -132,6 +134,7 @@ def routing(
             source=PredictionSource.CLASSIFIER,
         ),
         decision=decision,
+        missing_parameters=missing_parameters,
         requires_confirmation=requires_confirmation,
         reason_code="test_route",
     )
@@ -264,32 +267,24 @@ def test_confirmation_gate_prevents_model_and_tool_calls() -> None:
 
 
 @pytest.mark.parametrize(
-    ("language", "text", "expected_labels"),
+    ("language", "text", "expected_question"),
     [
         (
             "ar",
             "في حجوزات؟",
-            (
-                "تاريخ الوصول",
-                "المغادرة",
-                "عدد البالغين",
-            ),
+            "ما تاريخ الوصول؟",
         ),
         (
             "en",
             "Are there bookings available?",
-            (
-                "check-in",
-                "check-out",
-                "how many adults",
-            ),
+            "What is the check-in date?",
         ),
     ],
 )
 def test_empty_availability_clarification_uses_taxonomy_required_parameters(
     language: str,
     text: str,
-    expected_labels: tuple[str, ...],
+    expected_question: str,
 ) -> None:
     provider = FakeProvider([])
     service, llm_audit, tool_audit = orchestrator(provider)
@@ -304,11 +299,128 @@ def test_empty_availability_clarification_uses_taxonomy_required_parameters(
         )
     )
 
-    assert all(label in result.answer.text for label in expected_labels)
-    assert result.answer.text.endswith(("?", "؟"))
+    assert result.answer.text == expected_question
     assert provider.requests == []
     assert llm_audit.records == []
     assert tool_audit.records == []
+
+
+@pytest.mark.parametrize(
+    ("missing", "expected"),
+    [
+        (
+            ("room_number", "description"),
+            "ما رقم الغرفة؟",
+        ),
+        (
+            ("description",),
+            "ما الطلب الذي تريده بالتحديد؟",
+        ),
+    ],
+)
+def test_room_service_clarification_asks_one_workflow_specific_question(
+    missing: tuple[str, ...],
+    expected: str,
+) -> None:
+    provider = FakeProvider([])
+    service, _, _ = orchestrator(provider)
+
+    result = asyncio.run(
+        service.handle(
+            envelope("خدمة الطعام إلى الغرف"),
+            routing(
+                IntentCode.ROOM_SERVICE_REQUEST,
+                decision=RoutingDecision.CLARIFY,
+                missing_parameters=missing,
+            ),
+        )
+    )
+
+    assert result.answer.text == expected
+    assert "مشكلة" not in result.answer.text
+    assert provider.requests == []
+
+
+def test_confirmed_trusted_room_service_arguments_execute_allow_listed_tool() -> None:
+    async def handler(arguments: BaseModel) -> BaseModel:
+        values = cast(RoomServiceRequestInput, arguments)
+        assert values.room_number == "101"
+        assert values.category == "food_and_beverage"
+        return ServiceRequestCreatedOutput(
+            tracking_code="SR-FOOD00000001",
+            request_type="room_service",
+            category=values.category,
+            urgency=values.urgency.value,
+            status="open",
+            created=True,
+            requires_immediate_contact=False,
+            emergency_guidance_code=None,
+        )
+
+    room_service_registry = ToolRegistry(
+        (
+            RegisteredTool(
+                ToolDefinition(
+                    name="create_room_service_request",
+                    description="Create a validated simulated room-service request.",
+                    input_model=RoomServiceRequestInput,
+                    output_model=ServiceRequestCreatedOutput,
+                    allowed_callers=frozenset(
+                        {
+                            ToolCaller.ASSISTANT,
+                        }
+                    ),
+                    timeout_ms=500,
+                    effect=ToolEffect.WRITE,
+                    requires_confirmation=True,
+                ),
+                handler,
+            ),
+        )
+    )
+    final = GroundedAnswer(
+        language="ar",
+        text="تم إنشاء طلب خدمة الغرف برمز SR-FOOD00000001.",
+        basis=AnswerBasis.TOOL,
+        tool_names=(
+            "create_room_service_request",
+        ),
+    )
+    provider = FakeProvider(
+        [
+            response(
+                text=final.model_dump_json()
+            )
+        ]
+    )
+    service, _, tool_audit = orchestrator(
+        provider,
+        registry=room_service_registry,
+    )
+
+    result = asyncio.run(
+        service.handle(
+            envelope("101 أريد وجبة عشاء لشخصين"),
+            routing(
+                IntentCode.ROOM_SERVICE_REQUEST,
+                requires_confirmation=True,
+            ),
+            confirmed=True,
+            trusted_tool_arguments={
+                "category": "food_and_beverage",
+                "room_number": "101",
+                "description": "أريد وجبة عشاء لشخصين",
+                "urgency": "normal",
+                "idempotency_key": "telegram-room-service-1001",
+            },
+        )
+    )
+
+    assert result.tool_executed is True
+    assert result.answer.text == final.text
+    assert tool_audit.records[0].tool_name == "create_room_service_request"
+    assert tool_audit.records[0].result_status.value == "succeeded"
+    assert tool_audit.records[0].error_code is None
 
 
 def test_confirmed_trusted_maintenance_arguments_execute_allow_listed_tool() -> None:

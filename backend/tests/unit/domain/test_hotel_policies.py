@@ -61,6 +61,30 @@ def test_maintenance_category_resolution_uses_domain_allow_list(
     )
 
 
+@pytest.mark.parametrize(
+    "description",
+    [
+        "أريد طعاماً للغرفة",
+        "أريد أكل",
+        "أريد وجبة غداء",
+        "أريد فطور",
+        "أريد عشاء",
+        "أريد مشروبات",
+    ],
+)
+def test_room_service_food_expressions_resolve_to_food_and_beverage(
+    description: str,
+) -> None:
+    assert (
+        resolve_service_category(
+            ServiceRequestType.ROOM_SERVICE,
+            "general",
+            description,
+        )
+        == "food_and_beverage"
+    )
+
+
 def test_category_resolution_preserves_valid_values_and_rejects_unknown_issues() -> None:
     assert (
         resolve_service_category(

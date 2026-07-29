@@ -13,6 +13,7 @@ from hotel_bot.application.guest_flows import (
     redact_sensitive_text,
     sanitize_context,
 )
+from hotel_bot.application.hotel_tools import RoomServiceRequestInput
 from hotel_bot.domain.conversation.enums import (
     ActiveWorkflow,
     MessageDirection,
@@ -100,30 +101,63 @@ def test_ac_maintenance_arguments_resolve_general_to_hvac() -> None:
 
 
 def test_multiturn_availability_merges_dates_with_arabic_adult_count() -> None:
-    first = extract_parameters(
-        "2026-08-10 إلى 2026-08-12",
-        ConversationState(language="ar"),
-        idempotency_seed="availability-dates",
+    state = ConversationState(
+        language="ar",
+        active_workflow=ActiveWorkflow.AVAILABILITY,
+    )
+    check_in = extract_parameters(
+        "2026-01-01",
+        state,
+        idempotency_seed="availability-check-in",
     )
     state = _state_with_parameters(
-        ConversationState(language="ar"),
+        state,
         IntentCode.ROOM_AVAILABILITY,
-        first,
+        check_in,
         active_workflow=ActiveWorkflow.AVAILABILITY,
     )
 
-    second = extract_parameters(
-        "شخصين",
+    check_out = extract_parameters(
+        "2026-01-10",
+        state,
+        idempotency_seed="availability-check-out",
+    )
+    state = _state_with_parameters(
+        state,
+        IntentCode.ROOM_AVAILABILITY,
+        check_out,
+        active_workflow=ActiveWorkflow.AVAILABILITY,
+    )
+
+    adults = extract_parameters(
+        "14",
         state,
         idempotency_seed="availability-adults",
     )
 
-    assert str(second["check_in"]) == "2026-08-10"
-    assert str(second["check_out"]) == "2026-08-12"
-    assert second["adults"] == 2
+    assert str(check_in["check_in"]) == "2026-01-01"
+    assert "check_out" not in check_in
+    assert str(check_out["check_in"]) == "2026-01-01"
+    assert str(check_out["check_out"]) == "2026-01-10"
+    assert adults["adults"] == 14
 
 
-def test_room_service_followup_preserves_category_and_extracts_leading_room() -> None:
+def test_multivalue_availability_extracts_dates_and_bare_adults_together() -> None:
+    parameters = extract_parameters(
+        "2026-01-01\n2026-01-10\n14",
+        ConversationState(
+            language="ar",
+            active_workflow=ActiveWorkflow.AVAILABILITY,
+        ),
+        idempotency_seed="availability-multiple-values",
+    )
+
+    assert str(parameters["check_in"]) == "2026-01-01"
+    assert str(parameters["check_out"]) == "2026-01-10"
+    assert parameters["adults"] == 14
+
+
+def test_room_service_followup_builds_valid_confirmable_arguments() -> None:
     first = extract_parameters(
         "بدي خدمة الطعام إلى الغرفة",
         ConversationState(language="ar"),
@@ -137,7 +171,7 @@ def test_room_service_followup_preserves_category_and_extracts_leading_room() ->
     )
 
     second = extract_parameters(
-        "100 خدمة الطعام إلى الغرف",
+        "10 اريد طعام لغرفتي",
         state,
         idempotency_seed="room-service-followup",
     )
@@ -149,10 +183,36 @@ def test_room_service_followup_preserves_category_and_extracts_leading_room() ->
         second,
     )
 
-    assert second["room_number"] == "100"
+    arguments = _tool_arguments(
+        IntentCode.ROOM_SERVICE_REQUEST,
+        second,
+    )
+
+    assert second["room_number"] == "10"
     assert second["category"] == "food_and_beverage"
-    assert "description" not in second
-    assert routing.missing_parameters == ("description",)
+    assert second["description"] == "10 اريد طعام لغرفتي"
+    assert routing.missing_parameters == ()
+    assert routing.requires_confirmation is True
+    assert RoomServiceRequestInput.model_validate(arguments)
+
+
+def test_room_service_missing_slots_keep_workflow_order() -> None:
+    parameters: dict[str, object] = {
+        "category": "general",
+    }
+    routing = _resolve_service_request_routing(
+        _forced_routing(
+            IntentCode.ROOM_SERVICE_REQUEST,
+            parameters,
+        ),
+        parameters,
+    )
+
+    assert routing.missing_parameters == (
+        "room_number",
+        "category",
+        "description",
+    )
 
 
 def test_language_commands_acknowledge_without_replaying_onboarding() -> None:

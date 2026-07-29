@@ -48,6 +48,7 @@ ROOM_PATTERN = re.compile(
     re.IGNORECASE,
 )
 LEADING_ROOM_PATTERN = re.compile(r"^\s*(\d{1,4})\b")
+BARE_COUNT_PATTERN = re.compile(r"^\s*(\d{1,2})\s*$")
 ADULTS_PATTERN = re.compile(
     (
         r"(?:(?:adults?|بالغ(?:ين)?)\s*[:=-]?\s*(\d{1,2})"
@@ -275,19 +276,21 @@ def extract_parameters(
 
     dates = DATE_PATTERN.findall(text)
 
-    if dates or state.check_in:
-        values["check_in"] = (
-            date.fromisoformat(dates[0])
-            if dates
-            else state.check_in
-        )
+    check_in = state.check_in
+    check_out = state.check_out
+    if len(dates) >= 2:
+        check_in = check_in or date.fromisoformat(dates[0])
+        check_out = check_out or date.fromisoformat(dates[1])
+    elif dates:
+        if check_in is None:
+            check_in = date.fromisoformat(dates[0])
+        elif check_out is None:
+            check_out = date.fromisoformat(dates[0])
 
-    if len(dates) >= 2 or state.check_out:
-        values["check_out"] = (
-            date.fromisoformat(dates[1])
-            if len(dates) >= 2
-            else state.check_out
-        )
+    if check_in is not None:
+        values["check_in"] = check_in
+    if check_out is not None:
+        values["check_out"] = check_out
 
     adults = _first(
         ADULTS_PATTERN,
@@ -295,6 +298,17 @@ def extract_parameters(
     )
     if adults is None and "شخصين" in normalize_text(text):
         adults = "2"
+    if (
+        adults is None
+        and state.active_workflow is ActiveWorkflow.AVAILABILITY
+        and check_in is not None
+        and check_out is not None
+        and state.adults is None
+    ):
+        adults = _first(
+            BARE_COUNT_PATTERN,
+            DATE_PATTERN.sub(" ", text),
+        )
     children = _first(
         CHILDREN_PATTERN,
         text,
@@ -383,9 +397,13 @@ def extract_parameters(
             "dinner",
             "breakfast",
             "طعام",
+            "أكل",
+            "اكل",
             "وجبة",
+            "غداء",
             "عشاء",
             "فطور",
+            "مشروب",
         )
     ):
         category = "food_and_beverage"
@@ -591,6 +609,18 @@ def _resolve_service_request_routing(
     if request_type is None:
         return routing
 
+    missing = list(routing.missing_parameters)
+    description = " ".join(
+        str(parameters.get("description", "")).split()
+    )
+    if description:
+        if len(description) < 10:
+            parameters.pop("description", None)
+            if "description" not in missing:
+                missing.append("description")
+        else:
+            parameters["description"] = description[:1000]
+
     category = resolve_service_category(
         request_type,
         str(parameters.get("category", "")),
@@ -598,16 +628,34 @@ def _resolve_service_request_routing(
     )
     if category is not None:
         parameters["category"] = category
+    elif "category" not in missing:
+        missing.append("category")
+
+    required_order = INTENT_DEFINITIONS[
+        routing.prediction.intent
+    ].required_parameters
+    resolved_missing = (
+        *(
+            name
+            for name in required_order
+            if name in missing
+        ),
+        *(
+            name
+            for name in missing
+            if name not in required_order
+        ),
+    )
+    if resolved_missing == routing.missing_parameters:
         return routing
 
-    missing = tuple(dict.fromkeys((*routing.missing_parameters, "category")))
     return routing.model_copy(
         update={
             "decision": RoutingDecision.CLARIFY,
-            "missing_parameters": missing,
+            "missing_parameters": resolved_missing,
             "requires_confirmation": False,
             "allow_tool_execution": False,
-            "reason_code": "missing_service_category",
+            "reason_code": "missing_service_parameters",
         }
     )
 
