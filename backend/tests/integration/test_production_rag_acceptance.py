@@ -12,9 +12,14 @@ import pytest
 from pydantic import SecretStr
 from sqlalchemy import delete, select, update
 
+from hotel_bot.application.guest_flows import extract_parameters
 from hotel_bot.application.hotel_operations import HotelOperationsService
 from hotel_bot.application.hotel_tools import build_hotel_tool_registry
-from hotel_bot.application.knowledge import KnowledgeIndexService, KnowledgeRetrievalService
+from hotel_bot.application.knowledge import (
+    KnowledgeIndexService,
+    KnowledgeManagementService,
+    KnowledgeRetrievalService,
+)
 from hotel_bot.application.llm import AuditedLLMService, HybridOrchestrator
 from hotel_bot.application.prompts import PromptFactory
 from hotel_bot.application.tools import ControlledToolExecutor
@@ -27,8 +32,11 @@ from hotel_bot.domain.conversation.models import (
 )
 from hotel_bot.domain.intent.classifier import ALGORITHM_VERSION, NaiveBayesIntentClassifier
 from hotel_bot.domain.intent.enums import DatasetSplit, IntentCode, RoutingDecision
+from hotel_bot.domain.intent.models import RoutingResult, SupportedLanguage
 from hotel_bot.domain.intent.routing import SafeIntentRouter
+from hotel_bot.domain.knowledge.enums import SourceFormat
 from hotel_bot.domain.llm.enums import AnswerBasis
+from hotel_bot.domain.llm.models import OrchestrationResult
 from hotel_bot.infrastructure.database import DatabaseManager
 from hotel_bot.infrastructure.embeddings import SentenceTransformerEmbeddingProvider
 from hotel_bot.infrastructure.faiss_store import FaissIndexStore
@@ -53,10 +61,13 @@ from hotel_bot.persistence.models import (
     Guest,
     IndexVersion,
     KnowledgeChunk,
+    KnowledgeDocument,
+    KnowledgeRevision,
     LLMRun,
     Message,
     ToolExecution,
 )
+from hotel_bot.seed.loader import HotelSeeder
 
 pytestmark = [
     pytest.mark.integration,
@@ -74,6 +85,31 @@ ENGLISH_QUERY = (
     "Airport, and how far in advance do I need to book?"
 )
 ARABIC_QUERY = "هل يوفر الفندق خدمة نقل من مطار دمشق وكم يلزم الحجز مسبقاً؟"
+POLICY_TITLE = "قبول حجز الغرف المختلطة"
+POLICY_CONTENT = (
+    "يسمح الفندق بحجز غرفة مشتركة لرجل وامرأة فقط عند إبراز وثيقة زواج رسمية "
+    "سارية عند تسجيل الوصول. يجب أن تتطابق أسماء النزلاء مع وثيقة الزواج "
+    "وهويات النزلاء. لا تحدد المعلومات المعتمدة عقوبة أو غرامة أو إجراءً عند "
+    "عدم تقديم الوثيقة."
+)
+POLICY_QUERIES = (
+    "أنا وخطيبتي بدنا غرفة وحدة، شو المطلوب؟",
+    "هل تسمحون بحجز غرفة لشاب وفتاة غير متزوجين؟",
+    "هل يلزم إبراز وثيقة زواج لحجز غرفة مشتركة؟",
+    "شو العقوبة إذا حجزنا بدون وثيقة زواج؟",
+)
+FUTURE_TITLE = "إعارة مستلزمات الطقس للنزلاء"
+FUTURE_CONTENT = (
+    "يمكن للنزيل استعارة مظلة من مكتب خدمة الضيوف بين الساعة السادسة صباحاً "
+    "والعاشرة مساءً. يلزم إبراز بطاقة الغرفة، وتُعاد المظلة قبل تسجيل المغادرة."
+)
+FUTURE_QUERIES = (
+    "إذا كان الجو ماطراً، من أين أحصل على شيء يحميني من المطر ومتى؟",
+    "هل أستطيع أخذ مظلة خارج الفندق وما الذي يجب أن أبرزه؟",
+)
+AVAILABILITY_QUERY = "أريد غرفة من 2026-08-10 إلى 2026-08-12 لشخصين"
+BOOKING_QUERY = "أريد متابعة الحجز BKG-2026-0001"
+GEMINI_FREE_TIER_PACING_SECONDS = 31
 
 
 def settings() -> Settings:
@@ -138,13 +174,14 @@ def router() -> SafeIntentRouter:
     return SafeIntentRouter(classifier)
 
 
-def test_airport_queries_use_real_production_router_embedder_faiss_and_seed() -> None:
+def test_dynamic_knowledge_routing_uses_real_router_lifecycle_faiss_and_gemini() -> None:
     async def exercise() -> None:
         config = settings()
         database = DatabaseManager(config)
         admin_id = uuid4()
         index_id: UUID | None = None
         previous_active: tuple[UUID, ...] = ()
+        document_ids: list[UUID] = []
         trace_ids: list[tuple[UUID, UUID, UUID]] = []
         gemini: GeminiAdapter | None = None
         try:
@@ -160,6 +197,7 @@ def test_airport_queries_use_real_production_router_embedder_faiss_and_seed() ->
                     )
                 )
                 await KnowledgeSeeder(session).seed()
+                await HotelSeeder(session).seed()
                 previous_active = tuple(
                     await session.scalars(
                         select(IndexVersion.id).where(
@@ -167,6 +205,28 @@ def test_airport_queries_use_real_production_router_embedder_faiss_and_seed() ->
                         )
                     )
                 )
+
+            async with database.transaction() as session:
+                management = KnowledgeManagementService(
+                    SQLAlchemyKnowledgeRepository(session)
+                )
+                for title, content in (
+                    (POLICY_TITLE, POLICY_CONTENT),
+                    (FUTURE_TITLE, FUTURE_CONTENT),
+                ):
+                    document, revision = await management.create_document(
+                        admin_id=admin_id,
+                        title=title,
+                        language="ar",
+                        source_format=SourceFormat.PLAIN_TEXT,
+                        content=content,
+                    )
+                    document_ids.append(document.id)
+                    await management.approve_revision(
+                        admin_id=admin_id,
+                        document_id=document.id,
+                        revision_id=revision.id,
+                    )
 
             embedder = SentenceTransformerEmbeddingProvider(
                 model_name=config.embedding_model,
@@ -207,18 +267,28 @@ def test_airport_queries_use_real_production_router_embedder_faiss_and_seed() ->
                     ).activate_build(materialized, store=store)
 
                 production_router = router()
-                for query, language in (
-                    (ENGLISH_QUERY, "en"),
-                    (ARABIC_QUERY, "ar"),
-                ):
-                    routing = production_router.route(query, language)
-                    assert routing.prediction.intent is IntentCode.HOTEL_INFO
-                    assert routing.decision is RoutingDecision.KNOWLEDGE_CANDIDATE
-
+                async def run_message(
+                    query: str,
+                    *,
+                    language: SupportedLanguage,
+                    expected_titles: set[str] | None = None,
+                    expected_evidence_markers: tuple[str, ...] = (),
+                    parameters: dict[str, object] | None = None,
+                ) -> tuple[RoutingResult, OrchestrationResult]:
+                    expects_knowledge = (
+                        expected_titles is not None
+                        or bool(expected_evidence_markers)
+                    )
+                    routing = production_router.route(
+                        query,
+                        language,
+                        parameters=parameters,
+                    )
                     guest_id = uuid4()
                     conversation_id = uuid4()
                     message_id = uuid4()
                     trace_ids.append((guest_id, conversation_id, message_id))
+                    correlation_id = f"production-rag-{message_id.hex}"
                     async with database.transaction() as session:
                         session.add(
                             Guest(
@@ -248,7 +318,7 @@ def test_airport_queries_use_real_production_router_embedder_faiss_and_seed() ->
                                 direction=MessageDirection.INBOUND,
                                 text=query,
                                 language=language,
-                                correlation_id=f"production-rag-{language}",
+                                correlation_id=correlation_id,
                             )
                         )
                         await session.flush()
@@ -259,25 +329,6 @@ def test_airport_queries_use_real_production_router_embedder_faiss_and_seed() ->
                             top_k=config.retrieval_top_k,
                             minimum_score=config.retrieval_min_score,
                         )
-                        result = await retrieval.retrieve(query)
-                        assert result.sufficient is True
-                        airport = next(
-                            item
-                            for item in result.evidence
-                            if item.title
-                            in {
-                                "Airport transfer",
-                                "النقل من وإلى المطار",
-                            }
-                        )
-                        assert "24 hours" in airport.text or "أربع وعشرين ساعة" in airport.text
-                        stored = await session.get(KnowledgeChunk, airport.chunk_id)
-                        assert stored is not None
-                        assert (
-                            stored.metadata_json or {}
-                        ).get("document_id") == str(airport.document_id)
-                        assert stored.revision_id == airport.revision_id
-
                         registry = build_hotel_tool_registry(
                             HotelOperationsService(
                                 SQLAlchemyHotelOperationsRepository(session)
@@ -304,12 +355,12 @@ def test_airport_queries_use_real_production_router_embedder_faiss_and_seed() ->
                             state=ConversationState(language=language),
                             current_message=MessageSnapshot(
                                 id=message_id,
-                                conversation_id=uuid4(),
+                                conversation_id=conversation_id,
                                 sequence_number=1,
                                 direction=MessageDirection.INBOUND,
                                 text=query,
                                 language=language,
-                                correlation_id=f"production-rag-{language}",
+                                correlation_id=correlation_id,
                                 created_at=datetime.now(UTC).replace(
                                     tzinfo=None
                                 ),
@@ -320,30 +371,193 @@ def test_airport_queries_use_real_production_router_embedder_faiss_and_seed() ->
                             estimated_tokens=40,
                             truncated=False,
                         )
-                        answer = await orchestrator.handle(context, routing)
-                        assert answer.answer.basis is AnswerBasis.KNOWLEDGE
-                        assert answer.answer.escalation is False
-                        assert answer.tool_executed is False
-                        assert answer.answer.evidence_ids
-                        assert any(
-                            marker in answer.answer.text
-                            for marker in ("24", "٢٤", "أربع وعشرين")
+                        answer = await orchestrator.handle(
+                            context,
+                            routing,
+                            trusted_tool_arguments=parameters,
                         )
-                        llm_run = await session.scalar(
-                            select(LLMRun).where(LLMRun.message_id == message_id)
+                        if expects_knowledge:
+                            cited_chunk_ids = tuple(
+                                UUID(item)
+                                for item in answer.answer.evidence_ids
+                            )
+                            assert answer.answer.basis is AnswerBasis.KNOWLEDGE
+                            assert answer.answer.escalation is False
+                            assert answer.tool_executed is False
+                            assert cited_chunk_ids
+                            cited_chunks = (
+                                await session.scalars(
+                                    select(KnowledgeChunk).where(
+                                        KnowledgeChunk.id.in_(cited_chunk_ids)
+                                    )
+                                )
+                            ).all()
+                            assert any(
+                                (
+                                    expected_titles is not None
+                                    and str(
+                                        (
+                                            chunk.metadata_json
+                                            or {}
+                                        ).get("title")
+                                    )
+                                    in expected_titles
+                                )
+                                or (
+                                    expected_evidence_markers
+                                    and all(
+                                        marker in chunk.text
+                                        for marker in (
+                                            expected_evidence_markers
+                                        )
+                                    )
+                                )
+                                for chunk in cited_chunks
+                            ), [
+                                (
+                                    (chunk.metadata_json or {}).get("title"),
+                                    chunk.text,
+                                )
+                                for chunk in cited_chunks
+                            ]
+                        llm_runs = (
+                            await session.scalars(
+                                select(LLMRun).where(
+                                    LLMRun.message_id == message_id
+                                )
+                            )
+                        ).all()
+                        assert llm_runs
+                        assert all(item.status == "succeeded" for item in llm_runs)
+                        assert all(
+                            item.provider == "google_gemini"
+                            for item in llm_runs
                         )
-                        assert llm_run is not None
-                        assert llm_run.status == "succeeded"
-                        assert llm_run.provider == "google_gemini"
                         tool_count = await session.scalar(
                             select(ToolExecution.id)
                             .where(
-                                ToolExecution.correlation_id
-                                == f"production-rag-{language}"
+                                ToolExecution.correlation_id == correlation_id
                             )
                             .limit(1)
                         )
-                        assert tool_count is None
+                        if expects_knowledge:
+                            assert tool_count is None
+                        else:
+                            assert tool_count is not None
+                    await asyncio.sleep(GEMINI_FREE_TIER_PACING_SECONDS)
+                    return routing, answer
+
+                policy_answers = []
+                for query in POLICY_QUERIES:
+                    routing, answer = await run_message(
+                        query,
+                        language="ar",
+                        expected_titles={POLICY_TITLE},
+                        expected_evidence_markers=("وثيقة زواج",),
+                    )
+                    assert routing.prediction.intent is IntentCode.HOTEL_INFO
+                    assert routing.decision is RoutingDecision.KNOWLEDGE_CANDIDATE
+                    assert answer.answer.language == "ar"
+                    assert "وثيقة زواج" in answer.answer.text
+                    policy_answers.append(answer.answer.text)
+
+                penalty_answer = policy_answers[-1]
+                assert any(
+                    marker in penalty_answer
+                    for marker in (
+                        "لا تحدد",
+                        "لم تحدد",
+                        "غير محدد",
+                        "غير مذكور",
+                        "لا تذكر",
+                    )
+                )
+                assert all(
+                    unsupported not in penalty_answer
+                    for unsupported in (
+                        "الشرطة",
+                        "السجن",
+                        "إلغاء الحجز",
+                    )
+                )
+
+                airport_routing, airport_answer = await run_message(
+                    ARABIC_QUERY,
+                    language="ar",
+                    expected_titles={
+                        "Airport transfer",
+                        "النقل من وإلى المطار",
+                    },
+                )
+                assert airport_routing.decision is RoutingDecision.KNOWLEDGE_CANDIDATE
+                assert airport_answer.answer.language == "ar"
+                assert any(
+                    marker in airport_answer.answer.text
+                    for marker in ("24", "٢٤", "أربع وعشرين")
+                )
+
+                for query in FUTURE_QUERIES:
+                    future_routing, future_answer = await run_message(
+                        query,
+                        language="ar",
+                        expected_titles={FUTURE_TITLE},
+                    )
+                    assert future_routing.prediction.intent is IntentCode.HOTEL_INFO
+                    assert (
+                        future_routing.decision
+                        is RoutingDecision.KNOWLEDGE_CANDIDATE
+                    )
+                    assert future_answer.answer.language == "ar"
+                    assert any(
+                        marker in future_answer.answer.text
+                        for marker in (
+                            "بطاقة الغرفة",
+                            "مكتب خدمة الضيوف",
+                            "السادسة",
+                        )
+                    )
+
+                availability_parameters = extract_parameters(
+                    AVAILABILITY_QUERY,
+                    ConversationState(language="ar"),
+                    idempotency_seed="production-availability",
+                )
+                availability_routing, availability_answer = await run_message(
+                    AVAILABILITY_QUERY,
+                    language="ar",
+                    parameters={
+                        key: availability_parameters[key]
+                        for key in (
+                            "check_in",
+                            "check_out",
+                            "adults",
+                            "children",
+                        )
+                    },
+                )
+                assert (
+                    availability_routing.prediction.intent
+                    is IntentCode.ROOM_AVAILABILITY
+                )
+                assert (
+                    availability_routing.decision
+                    is RoutingDecision.ACTION_CANDIDATE
+                )
+                assert availability_answer.tool_executed is True
+                assert availability_answer.answer.basis is AnswerBasis.TOOL
+
+                booking_parameters = extract_parameters(
+                    BOOKING_QUERY,
+                    ConversationState(language="ar"),
+                    idempotency_seed="production-booking",
+                )
+                booking_routing = production_router.route(
+                    BOOKING_QUERY,
+                    "ar",
+                    parameters=booking_parameters,
+                )
+                assert booking_routing.prediction.intent is IntentCode.BOOKING_LOOKUP
+                assert booking_routing.decision is RoutingDecision.CLARIFY
         finally:
             if gemini is not None:
                 await gemini.close()
@@ -386,6 +600,25 @@ def test_airport_queries_use_real_production_router_embedder_faiss_and_seed() ->
                         .where(IndexVersion.id.in_(previous_active))
                         .values(status="active")
                     )
+                if document_ids:
+                    revision_ids = (
+                        await session.scalars(
+                            select(KnowledgeRevision.id).where(
+                                KnowledgeRevision.document_id.in_(document_ids)
+                            )
+                        )
+                    ).all()
+                    await session.execute(
+                        delete(KnowledgeDocument).where(
+                            KnowledgeDocument.id.in_(document_ids)
+                        )
+                    )
+                    if revision_ids:
+                        await session.execute(
+                            delete(KnowledgeRevision).where(
+                                KnowledgeRevision.id.in_(revision_ids)
+                            )
+                        )
                 await session.execute(
                     delete(AuditEvent).where(AuditEvent.actor_id == admin_id)
                 )

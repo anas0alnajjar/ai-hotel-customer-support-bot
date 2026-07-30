@@ -20,7 +20,7 @@ from hotel_bot.domain.intent.taxonomy import (
     STATE_CHANGING_INTENTS,
 )
 
-RULES_VERSION = "intent-rules-v1.0.0"
+RULES_VERSION = "intent-rules-v1.1.0"
 HUMAN_PATTERNS = (
     "موظف",
     "الاستقبال",
@@ -94,17 +94,113 @@ ROOM_SERVICE_QUESTIONS = frozenset(
         "i need room service",
     }
 )
-AIRPORT_KNOWLEDGE_TERMS = (
-    ("airport", "transfer"),
-    ("airport", "pick-up"),
-    ("airport", "pick up"),
-    ("airport", "pickup"),
-    ("المطار", "نقل"),
-    ("المطار", "توصيل"),
-    ("المطار", "استقبال"),
-    ("مطار", "نقل"),
-    ("مطار", "توصيل"),
-    ("مطار", "استقبال"),
+ACTION_REQUEST_MARKERS = (
+    "اريد",
+    "بدي",
+    "احتاج",
+    "ابحث",
+    "اعرض",
+    "ارسل",
+    "احضر",
+    "اطلب",
+    "i want",
+    "i need",
+    "find",
+    "search",
+    "show",
+    "send",
+    "bring",
+    "order",
+    "deliver",
+)
+INFORMATION_REQUEST_MARKERS = (
+    "هل",
+    "ما ",
+    "ماذا",
+    "سياسة",
+    "شروط",
+    "متطلبات",
+    "معلومات",
+    "معرفة",
+    "what ",
+    "does ",
+    "is ",
+    "policy",
+    "requirements",
+    "information",
+)
+ROOM_TERMS = ("غرفة", "غرف", "room", "rooms")
+AVAILABILITY_TERMS = (
+    "متاح",
+    "متاحة",
+    "فاضية",
+    "شاغر",
+    "شاغرة",
+    "التوفر",
+    "available",
+    "availability",
+    "vacant",
+)
+STAY_TIME_TERMS = (
+    "الليلة",
+    "اليوم",
+    "غدا",
+    "الاسبوع القادم",
+    "الشهر القادم",
+    "tonight",
+    "tomorrow",
+    "next weekend",
+    "next week",
+    "next month",
+)
+BOOKING_LOOKUP_TERMS = (
+    "تابع حجزي",
+    "متابعة حجزي",
+    "تحقق من حجزي",
+    "حجزي الحالي",
+    "existing booking",
+    "existing reservation",
+    "my booking",
+    "my reservation",
+)
+ROOM_SERVICE_ACTION_TERMS = (
+    "خدمة الغرف",
+    "خدمة الغرفة",
+    "للغرفة",
+    "الي الغرفة",
+    "room service",
+    "to my room",
+)
+MAINTENANCE_PROBLEM_TERMS = (
+    "عطل",
+    "عطلان",
+    "مكسور",
+    "مكسورة",
+    "لا يعمل",
+    "لا تعمل",
+    "تسريب",
+    "انسداد",
+    "broken",
+    "not working",
+    "leak",
+    "clogged",
+)
+SERVICE_STATUS_TERMS = (
+    "حالة طلبي",
+    "تابع طلبي",
+    "متابعة طلبي",
+    "طلب الخدمة",
+    "service request status",
+    "track my request",
+)
+ROOM_TYPE_ACTION_TERMS = (
+    "اعرض انواع الغرف",
+    "ما انواع الغرف",
+    "ما هي انواع الغرف",
+    "خيارات الغرف",
+    "show room types",
+    "what room types",
+    "room categories",
 )
 
 
@@ -123,6 +219,61 @@ def _rule_prediction(intent: IntentCode) -> IntentPrediction:
         scores=scores,
         source=PredictionSource.RULE,
     )
+
+
+def _contains_any(text: str, patterns: tuple[str, ...]) -> bool:
+    return any(pattern in text for pattern in patterns)
+
+
+def _is_substantive_question(text: str, normalized: str) -> bool:
+    return "?" in text or "؟" in text or len(normalized.split()) >= 4
+
+
+def _is_explicit_action(
+    intent: IntentCode,
+    normalized: str,
+    parameters: Mapping[str, object],
+) -> bool:
+    if intent is IntentCode.ROOM_AVAILABILITY:
+        has_dates = bool(parameters.get("check_in") or parameters.get("check_out"))
+        asks_for_room = _contains_any(normalized, ACTION_REQUEST_MARKERS) and _contains_any(
+            normalized, ROOM_TERMS
+        )
+        asks_availability = _contains_any(
+            normalized, AVAILABILITY_TERMS
+        ) and _contains_any(normalized, ROOM_TERMS)
+        timed_availability = asks_availability and _contains_any(
+            normalized, STAY_TIME_TERMS
+        )
+        return (
+            normalized in AVAILABILITY_QUESTIONS
+            or has_dates
+            or asks_for_room
+            or timed_availability
+            or (asks_availability and len(normalized.split()) <= 4)
+        )
+    if intent is IntentCode.BOOKING_LOOKUP:
+        return bool(parameters.get("booking_reference")) or (
+            normalized in BOOKING_LOOKUP_QUESTIONS
+            or _contains_any(normalized, BOOKING_LOOKUP_TERMS)
+        )
+    if intent is IntentCode.ROOM_SERVICE_REQUEST:
+        has_room = bool(parameters.get("room_number"))
+        requests_action = _contains_any(
+            normalized, ACTION_REQUEST_MARKERS
+        ) and not _contains_any(normalized, INFORMATION_REQUEST_MARKERS)
+        return normalized in ROOM_SERVICE_QUESTIONS or requests_action or (
+            _contains_any(normalized, ROOM_SERVICE_ACTION_TERMS) and has_room
+        )
+    if intent is IntentCode.MAINTENANCE_REQUEST:
+        return _contains_any(normalized, MAINTENANCE_PROBLEM_TERMS)
+    if intent is IntentCode.SERVICE_REQUEST_STATUS:
+        return bool(parameters.get("tracking_code")) or _contains_any(
+            normalized, SERVICE_STATUS_TERMS
+        )
+    if intent is IntentCode.ROOM_TYPES:
+        return _contains_any(normalized, ROOM_TYPE_ACTION_TERMS)
+    return False
 
 
 class SafeIntentRouter:
@@ -163,12 +314,7 @@ class SafeIntentRouter:
             )
 
         alias_intent = (
-            IntentCode.HOTEL_INFO
-            if any(
-                all(term in normalized for term in terms)
-                for terms in AIRPORT_KNOWLEDGE_TERMS
-            )
-            else IntentCode.ROOM_AVAILABILITY
+            IntentCode.ROOM_AVAILABILITY
             if normalized in AVAILABILITY_QUESTIONS
             else IntentCode.BOOKING_LOOKUP
             if normalized in BOOKING_LOOKUP_QUESTIONS
@@ -181,19 +327,59 @@ class SafeIntentRouter:
             if alias_intent is not None
             else self._classifier.predict(text, language)
         )
+        values = parameters or {}
+        substantive_question = _is_substantive_question(text, normalized)
+
+        if prediction.intent in ACTION_INTENTS and not _is_explicit_action(
+            prediction.intent,
+            normalized,
+            values,
+        ):
+            knowledge_prediction = _rule_prediction(IntentCode.HOTEL_INFO)
+            return RoutingResult(
+                prediction=knowledge_prediction,
+                decision=(
+                    RoutingDecision.KNOWLEDGE_CANDIDATE
+                    if substantive_question
+                    else RoutingDecision.CLARIFY
+                ),
+                reason_code=(
+                    "informational_or_ambiguous_knowledge_candidate"
+                    if substantive_question
+                    else "operational_noun_without_explicit_action"
+                ),
+            )
         if prediction.intent is IntentCode.HUMAN_ESCALATION:
+            if substantive_question:
+                return RoutingResult(
+                    prediction=_rule_prediction(IntentCode.HOTEL_INFO),
+                    decision=RoutingDecision.KNOWLEDGE_CANDIDATE,
+                    reason_code="informational_or_ambiguous_knowledge_candidate",
+                )
             return RoutingResult(
                 prediction=prediction,
                 decision=RoutingDecision.ESCALATE,
                 reason_code="classified_human_escalation",
             )
         if prediction.intent is IntentCode.UNSUPPORTED:
+            if substantive_question:
+                return RoutingResult(
+                    prediction=_rule_prediction(IntentCode.HOTEL_INFO),
+                    decision=RoutingDecision.KNOWLEDGE_CANDIDATE,
+                    reason_code="informational_or_ambiguous_knowledge_candidate",
+                )
             return RoutingResult(
                 prediction=prediction,
                 decision=RoutingDecision.FALLBACK,
                 reason_code="unsupported_request",
             )
         if prediction.intent is IntentCode.GREETING_SMALLTALK:
+            if substantive_question:
+                return RoutingResult(
+                    prediction=_rule_prediction(IntentCode.HOTEL_INFO),
+                    decision=RoutingDecision.KNOWLEDGE_CANDIDATE,
+                    reason_code="informational_or_ambiguous_knowledge_candidate",
+                )
             return RoutingResult(
                 prediction=prediction,
                 decision=RoutingDecision.CONTROLLED_RESPONSE,
@@ -201,7 +387,6 @@ class SafeIntentRouter:
             )
 
         definition = INTENT_DEFINITIONS[prediction.intent]
-        values = parameters or {}
         missing = tuple(
             name
             for name in definition.required_parameters
@@ -212,7 +397,13 @@ class SafeIntentRouter:
             if prediction.intent in ACTION_INTENTS
             else self._general_threshold
         )
-        if prediction.confidence < threshold or prediction.margin < self._margin_threshold:
+        if (
+            prediction.intent is not IntentCode.HOTEL_INFO
+            and (
+                prediction.confidence < threshold
+                or prediction.margin < self._margin_threshold
+            )
+        ):
             return RoutingResult(
                 prediction=prediction,
                 decision=RoutingDecision.CLARIFY,
@@ -224,7 +415,11 @@ class SafeIntentRouter:
             return RoutingResult(
                 prediction=prediction,
                 decision=RoutingDecision.KNOWLEDGE_CANDIDATE,
-                reason_code="high_confidence_knowledge_candidate",
+                reason_code=(
+                    "informational_or_ambiguous_knowledge_candidate"
+                    if substantive_question
+                    else "classified_knowledge_candidate"
+                ),
             )
 
         if missing:

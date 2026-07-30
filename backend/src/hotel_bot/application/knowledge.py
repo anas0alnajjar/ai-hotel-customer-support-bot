@@ -211,7 +211,7 @@ class KnowledgeIndexService:
                 "no_approved_knowledge", "at least one approved revision is required"
             )
         chunk_config: dict[str, object] = {
-            "strategy": "bounded_character_v1",
+            "strategy": "bounded_character_with_title_v2",
             "max_chars": self._max_chars,
             "overlap_chars": self._overlap_chars,
         }
@@ -259,7 +259,12 @@ class KnowledgeIndexService:
             raise KnowledgeValidationError(
                 "embedding_model_mismatch", "build plan and embedding provider do not match"
             )
-        vectors = embedder.embed_documents([chunk.text for chunk in plan.chunks])
+        vectors = embedder.embed_documents(
+            [
+                f"{chunk.metadata['title']}\n{chunk.text}"
+                for chunk in plan.chunks
+            ]
+        )
         artifact = store.build(
             index_version_id=plan.index.id,
             embedding_model=embedder.model_id,

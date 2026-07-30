@@ -74,6 +74,19 @@ class GroundedAnswer(BaseModel):
         return self
 
 
+class KnowledgeSearchQuery(BaseModel):
+    """A fact-preserving standalone query used only for semantic retrieval."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    language: SupportedLanguage
+    query: str = Field(min_length=2, max_length=1000)
+    material_conditions: tuple[str, ...] = Field(
+        min_length=1,
+        max_length=12,
+    )
+
+
 class LLMRunRecord(BaseModel):
     model_config = ConfigDict(frozen=True)
 

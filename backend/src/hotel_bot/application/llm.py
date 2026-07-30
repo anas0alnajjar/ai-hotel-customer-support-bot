@@ -24,6 +24,7 @@ from hotel_bot.domain.llm.errors import (
 )
 from hotel_bot.domain.llm.models import (
     GroundedAnswer,
+    KnowledgeSearchQuery,
     LLMRequest,
     LLMResponse,
     LLMRunRecord,
@@ -157,6 +158,7 @@ ACTION_TOOL_BY_INTENT: dict[IntentCode, str] = {
     IntentCode.MAINTENANCE_REQUEST: "create_maintenance_request",
     IntentCode.SERVICE_REQUEST_STATUS: "get_service_request_status",
 }
+KNOWLEDGE_QUERY_REWRITE_TRIGGER_SCORE = 0.55
 
 PARAMETER_LABELS = {
     "ar": {
@@ -361,6 +363,36 @@ class HybridOrchestrator:
             result = await self._retrieval.retrieve(context.current_message.text)
         except Exception:
             return self._unavailable(context, "knowledge_retrieval_failed")
+        strongest_score = result.evidence[0].score if result.evidence else -1.0
+        if strongest_score < KNOWLEDGE_QUERY_REWRITE_TRIGGER_SCORE:
+            try:
+                rewrite_response = await self._llm.generate(
+                    message_id=context.current_message.id,
+                    request=self._prompts.knowledge_search_query(context),
+                    budget=budget,
+                )
+                if not rewrite_response.text:
+                    raise LLMContractError("model returned no knowledge search query")
+                rewritten = KnowledgeSearchQuery.model_validate_json(
+                    rewrite_response.text
+                )
+                if rewritten.language != context.current_message.language:
+                    raise LLMContractError(
+                        "model changed the knowledge search query language"
+                    )
+                semantic_query = "\n".join(
+                    (
+                        rewritten.query,
+                        *rewritten.material_conditions,
+                    )
+                )
+                rewritten_result = await self._retrieval.retrieve(
+                    semantic_query
+                )
+                if rewritten_result.sufficient:
+                    result = rewritten_result
+            except (LLMError, ValidationError, ValueError):
+                pass
         if not result.sufficient:
             return self._unavailable(context, result.reason_code)
         evidence_ids = tuple(str(item.chunk_id) for item in result.evidence)

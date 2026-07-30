@@ -182,6 +182,87 @@ def test_existing_booking_phrase_is_distinct_from_room_availability() -> None:
 
 
 @pytest.mark.parametrize(
+    "text",
+    [
+        "هل تسمحون بحجز غرفة لشاب وفتاة غير متزوجين؟",
+        "أنا وخطيبتي بدنا غرفة وحدة، شو المطلوب؟",
+        "هل يلزم إبراز وثيقة زواج لحجز غرفة مشتركة؟",
+        "شو العقوبة إذا حجزنا بدون وثيقة زواج؟",
+        "هل يوفر الفندق خدمة نقل من المطار؟",
+        "إذا كان الجو ماطراً، من أين أحصل على شيء يحميني من المطر ومتى؟",
+    ],
+)
+def test_substantive_information_is_not_turned_into_a_transaction(
+    text: str,
+) -> None:
+    router = SafeIntentRouter(
+        FixedPredictor(
+            prediction(
+                IntentCode.ROOM_AVAILABILITY,
+                0.99,
+                0.90,
+            )
+        )
+    )
+
+    result = router.route(text, "ar", parameters={"adults": 2})
+
+    assert result.prediction.intent is IntentCode.HOTEL_INFO
+    assert result.decision is RoutingDecision.KNOWLEDGE_CANDIDATE
+    assert result.allow_tool_execution is False
+    assert result.reason_code == "informational_or_ambiguous_knowledge_candidate"
+
+
+def test_dated_room_request_remains_an_availability_action() -> None:
+    router = SafeIntentRouter(
+        FixedPredictor(
+            prediction(
+                IntentCode.ROOM_AVAILABILITY,
+                0.99,
+                0.90,
+            )
+        )
+    )
+
+    result = router.route(
+        "أريد غرفة من 2026-08-10 إلى 2026-08-12 لشخصين",
+        "ar",
+        parameters={
+            "check_in": "2026-08-10",
+            "check_out": "2026-08-12",
+            "adults": 2,
+        },
+    )
+
+    assert result.prediction.intent is IntentCode.ROOM_AVAILABILITY
+    assert result.decision is RoutingDecision.ACTION_CANDIDATE
+
+
+def test_booking_reference_remains_an_existing_booking_lookup() -> None:
+    router = SafeIntentRouter(
+        FixedPredictor(
+            prediction(
+                IntentCode.BOOKING_LOOKUP,
+                0.99,
+                0.90,
+            )
+        )
+    )
+
+    result = router.route(
+        "أريد متابعة الحجز BKG-2026-0001",
+        "ar",
+        parameters={
+            "booking_reference": "BKG-2026-0001",
+            "verification_value": "guest@example.com",
+        },
+    )
+
+    assert result.prediction.intent is IntentCode.BOOKING_LOOKUP
+    assert result.decision is RoutingDecision.ACTION_CANDIDATE
+
+
+@pytest.mark.parametrize(
     ("text", "language", "expected_intent", "expected_decision"),
     [
         (
