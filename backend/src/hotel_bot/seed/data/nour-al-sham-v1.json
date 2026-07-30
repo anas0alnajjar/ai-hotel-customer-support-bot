@@ -25,6 +25,7 @@
       "descriptions": {"ar": "غرفة هادئة مناسبة لشخصين.", "en": "A quiet room designed for two guests."},
       "capacity_adults": 2,
       "capacity_children": 1,
+      "nightly_rate_cents": 8500,
       "amenities": ["wifi", "air_conditioning", "minibar", "safe", "work_desk"]
     },
     {
@@ -33,6 +34,7 @@
       "descriptions": {"ar": "غرفة بسريرين منفصلين.", "en": "A practical room with two separate beds."},
       "capacity_adults": 2,
       "capacity_children": 1,
+      "nightly_rate_cents": 9000,
       "amenities": ["wifi", "air_conditioning", "minibar", "safe", "work_desk"]
     },
     {
@@ -41,6 +43,7 @@
       "descriptions": {"ar": "غرفة واسعة مع منطقة جلوس.", "en": "A spacious king room with a seating area."},
       "capacity_adults": 2,
       "capacity_children": 1,
+      "nightly_rate_cents": 12500,
       "amenities": ["wifi", "air_conditioning", "minibar", "safe", "smart_tv", "seating_area"]
     },
     {
@@ -49,6 +52,7 @@
       "descriptions": {"ar": "جناح بغرفتي نوم للعائلات.", "en": "A two-bedroom suite for families."},
       "capacity_adults": 4,
       "capacity_children": 2,
+      "nightly_rate_cents": 18000,
       "amenities": ["wifi", "air_conditioning", "minibar", "safe", "smart_tv", "living_room", "kitchenette"]
     },
     {
@@ -57,6 +61,7 @@
       "descriptions": {"ar": "جناح تنفيذي مع صالة عمل مستقلة.", "en": "An executive suite with a separate work lounge."},
       "capacity_adults": 3,
       "capacity_children": 1,
+      "nightly_rate_cents": 22000,
       "amenities": ["wifi", "air_conditioning", "minibar", "safe", "smart_tv", "living_room", "espresso_machine"]
     }
   ],

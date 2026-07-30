@@ -73,6 +73,119 @@ class HotelSeeder:
             existing=dict(self._existing),
         )
 
+    async def reset(self) -> HotelSeedResult:
+        """Restore only deterministic seed-owned rows; never delete unrelated records."""
+
+        result = await self.seed()
+        room_type_ids = {
+            item.code: stable_seed_id("room-type", item.code)
+            for item in self._dataset.room_types
+        }
+        room_ids = {
+            item.room_number: stable_seed_id("room", item.room_number)
+            for item in self._dataset.rooms
+        }
+        guest_ids = {
+            item.key: stable_seed_id("guest", item.key)
+            for item in self._dataset.guests
+        }
+        booking_ids = {
+            item.reference: stable_seed_id("booking", item.reference)
+            for item in self._dataset.bookings
+        }
+
+        for room_type_item in self._dataset.room_types:
+            room_type_row = await self._session.get(
+                RoomType,
+                room_type_ids[room_type_item.code],
+            )
+            assert room_type_row is not None
+            room_type_row.name_json = dict(room_type_item.names)
+            room_type_row.description_json = dict(room_type_item.descriptions)
+            room_type_row.capacity_adults = room_type_item.capacity_adults
+            room_type_row.capacity_children = room_type_item.capacity_children
+            room_type_row.nightly_rate_cents = room_type_item.nightly_rate_cents
+            room_type_row.amenities_json = list(room_type_item.amenities)
+            room_type_row.active = room_type_item.active
+
+        for room_item in self._dataset.rooms:
+            room_row = await self._session.get(
+                Room,
+                room_ids[room_item.room_number],
+            )
+            assert room_row is not None
+            room_row.room_type_id = room_type_ids[room_item.room_type_code]
+            room_row.floor = room_item.floor
+            room_row.operational_status = room_item.operational_status
+
+        for guest_item in self._dataset.guests:
+            guest_row = await self._session.get(
+                Guest,
+                guest_ids[guest_item.key],
+            )
+            assert guest_row is not None
+            guest_row.preferred_language = guest_item.preferred_language
+
+        for booking_item in self._dataset.bookings:
+            booking_row = await self._session.get(
+                Booking,
+                booking_ids[booking_item.reference],
+            )
+            assert booking_row is not None
+            booking_row.guest_verification_hash = hash_verification_value(
+                booking_item.verification_value,
+                salt=deterministic_seed_salt(booking_item.reference),
+            )
+            booking_row.guest_name_masked = booking_item.guest_name_masked
+            booking_row.check_in = booking_item.check_in
+            booking_row.check_out = booking_item.check_out
+            booking_row.room_type_id = room_type_ids[booking_item.room_type_code]
+            booking_row.room_id = (
+                room_ids[booking_item.room_number]
+                if booking_item.room_number
+                else None
+            )
+            booking_row.adults = booking_item.adults
+            booking_row.children = booking_item.children
+            booking_row.status = booking_item.status
+
+        bookings_by_reference = {
+            item.reference: item
+            for item in self._dataset.bookings
+        }
+        for request_item in self._dataset.service_requests:
+            request_row = await self._session.get(
+                ServiceRequest,
+                stable_seed_id("service-request", request_item.tracking_code),
+            )
+            assert request_row is not None
+            booking = (
+                bookings_by_reference[request_item.booking_reference]
+                if request_item.booking_reference
+                else None
+            )
+            request_row.type = request_item.request_type
+            request_row.category = request_item.category
+            request_row.room_id = room_ids[request_item.room_number]
+            request_row.booking_id = (
+                booking_ids[request_item.booking_reference]
+                if request_item.booking_reference
+                else None
+            )
+            request_row.requested_by_guest_id = (
+                guest_ids[booking.guest_key]
+                if booking
+                else None
+            )
+            request_row.description = request_item.description
+            request_row.urgency = request_item.urgency
+            request_row.status = request_item.status
+            request_row.idempotency_key = request_item.idempotency_key
+            request_row.completed_at = request_item.completed_at
+
+        await self._session.flush()
+        return result
+
     async def _seed_room_types(self) -> dict[str, UUID]:
         identifiers: dict[str, UUID] = {}
         for item in self._dataset.room_types:
@@ -95,6 +208,7 @@ class HotelSeeder:
                     description_json=dict(item.descriptions),
                     capacity_adults=item.capacity_adults,
                     capacity_children=item.capacity_children,
+                    nightly_rate_cents=item.nightly_rate_cents,
                     amenities_json=list(item.amenities),
                     active=item.active,
                 )

@@ -27,6 +27,7 @@ class Settings(BaseSettings):
         default="development", alias="APP_ENVIRONMENT"
     )
     debug: bool = Field(default=False, alias="APP_DEBUG")
+    demo_mode: bool = Field(default=False, alias="DEMO_MODE")
     log_level: str = Field(default="INFO", alias="APP_LOG_LEVEL")
     api_v1_prefix: str = Field(default="/api/v1", alias="API_V1_PREFIX")
     trusted_hosts: str = Field(

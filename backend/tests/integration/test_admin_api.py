@@ -20,6 +20,7 @@ from hotel_bot.domain.hotel.enums import (
     ServiceRequestType,
     Urgency,
 )
+from hotel_bot.domain.hotel.security import verify_verification_value
 from hotel_bot.domain.knowledge.enums import IndexStatus
 from hotel_bot.infrastructure.database import DatabaseManager
 from hotel_bot.main import create_app
@@ -27,6 +28,7 @@ from hotel_bot.persistence.enums import ActorType, AdminRole, AdminStatus
 from hotel_bot.persistence.models import (
     AdminUser,
     AuditEvent,
+    Booking,
     Conversation,
     EvaluationRun,
     Feedback,
@@ -69,6 +71,7 @@ def mysql_settings(index_path: Path) -> Settings:
         DB_USER=values["DB_USER"],
         DB_PASSWORD=SecretStr(values["DB_PASSWORD"]),
         ADMIN_TOKEN_SECRET=SecretStr(TOKEN_SECRET),
+        DEMO_MODE=True,
         EMBEDDING_PROVIDER="hashing_test",
         EMBEDDING_DIMENSION=64,
         KNOWLEDGE_INDEX_PATH=index_path,
@@ -333,6 +336,121 @@ def test_admin_api_auth_rbac_masking_and_management_journey() -> None:
                 assert me.status_code == 200
                 assert me.json()["role"] == "admin"
 
+                room_types_response = client.get(
+                    "/api/v1/admin/hotel-data/room-types",
+                    headers=headers(admin_token, "hotel-room-types"),
+                )
+                assert room_types_response.status_code == 200
+                seeded_type = next(
+                    item
+                    for item in room_types_response.json()
+                    if item["code"] == "standard_king"
+                )
+                assert seeded_type["nightly_rate_cents"] >= 0
+                assert seeded_type["name_ar"]
+                assert seeded_type["name_en"]
+
+                rooms_response = client.get(
+                    "/api/v1/admin/hotel-data/rooms?status=available",
+                    headers=headers(admin_token, "hotel-rooms"),
+                )
+                assert rooms_response.status_code == 200
+                assert any(
+                    item["room_number"] == "101"
+                    for item in rooms_response.json()
+                )
+
+                bookings_response = client.get(
+                    "/api/v1/admin/hotel-data/bookings",
+                    headers=headers(admin_token, "hotel-bookings"),
+                )
+                assert bookings_response.status_code == 200
+                seeded_booking = next(
+                    item
+                    for item in bookings_response.json()
+                    if item["reference"] == "BKG-2026-0001"
+                )
+                assert "guest_verification_hash" not in seeded_booking
+
+                demo_credentials = client.get(
+                    "/api/v1/admin/hotel-data/demo-credentials",
+                    headers=headers(admin_token, "demo-credentials"),
+                )
+                assert demo_credentials.status_code == 200
+                assert demo_credentials.json()["label"] == (
+                    "Demo data — not real guest credentials"
+                )
+                assert {
+                    (
+                        item["booking_reference"],
+                        item["verification_code"],
+                    )
+                    for item in demo_credentials.json()["credentials"]
+                } >= {
+                    ("BKG-2026-0001", "0101"),
+                    ("BKG-2026-0004", "0404"),
+                }
+
+                edited_booking = client.patch(
+                    (
+                        "/api/v1/admin/hotel-data/bookings/"
+                        f"{seeded_booking['id']}"
+                    ),
+                    headers=headers(admin_token, "booking-edit"),
+                    json={"guest_name_masked": "D*** E***"},
+                )
+                assert edited_booking.status_code == 200
+                assert edited_booking.json()["verification_code_once"] is None
+
+                reset_code_response = client.post(
+                    (
+                        "/api/v1/admin/hotel-data/bookings/"
+                        f"{seeded_booking['id']}/reset-verification"
+                    ),
+                    headers=headers(admin_token, "booking-code-reset"),
+                )
+                assert reset_code_response.status_code == 200
+                one_time_code = reset_code_response.json()[
+                    "verification_code_once"
+                ]
+                assert one_time_code
+
+                async def stored_hash() -> str:
+                    database = DatabaseManager(settings)
+                    try:
+                        async with database.session() as session:
+                            value = await session.scalar(
+                                select(Booking.guest_verification_hash).where(
+                                    Booking.id == UUID(seeded_booking["id"])
+                                )
+                            )
+                            assert value is not None
+                            return value
+                    finally:
+                        await database.dispose()
+
+                verification_hash = asyncio.run(stored_hash())
+                assert one_time_code not in verification_hash
+                assert verify_verification_value(
+                    one_time_code,
+                    verification_hash,
+                )
+
+                for suffix in ("first", "second"):
+                    reset_demo = client.post(
+                        "/api/v1/admin/hotel-data/reset",
+                        headers=headers(
+                            admin_token,
+                            f"demo-reset-{suffix}",
+                        ),
+                        json={"confirmation": "RESET DEMO DATA"},
+                    )
+                    assert reset_demo.status_code == 200
+                    assert reset_demo.json()["reset"] is True
+
+                restored_hash = asyncio.run(stored_hash())
+                assert verify_verification_value("0101", restored_hash)
+
                 forbidden = client.get(
                     "/api/v1/admin/knowledge",
                     headers=headers(support_token, "support-knowledge"),
@@ -459,6 +577,14 @@ def test_admin_api_auth_rbac_masking_and_management_journey() -> None:
                 assert metrics["intent"]["macro_f1"] is not None
                 assert metrics["retrieval"]["recall_at_k"] is not None
                 assert metrics["answer_quality"]["evaluator_sample_count"] >= 1
+                tool_metrics = metrics["tool_execution"]
+                assert "valid_tool_requests_succeeded" in tool_metrics
+                assert "expected_requests_rejected" in tool_metrics
+                assert "unexpected_execution_failures" in tool_metrics
+                assert (
+                    tool_metrics["expected_requests_rejected"]
+                    == tool_metrics["status_counts"].get("rejected", 0)
+                )
 
                 fetched = client.get(
                     f"/api/v1/admin/evaluations/{evaluation_id}",

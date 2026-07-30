@@ -351,6 +351,7 @@ class RoomType(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __table_args__ = (
         CheckConstraint("capacity_adults > 0", name="adult_capacity_positive"),
         CheckConstraint("capacity_children >= 0", name="child_capacity_nonnegative"),
+        CheckConstraint("nightly_rate_cents >= 0", name="nightly_rate_nonnegative"),
     )
 
     code: Mapped[str] = mapped_column(String(32), nullable=False, unique=True)
@@ -358,6 +359,9 @@ class RoomType(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     description_json: Mapped[dict[str, str]] = mapped_column(JSON(), nullable=False)
     capacity_adults: Mapped[int] = mapped_column(Integer(), nullable=False)
     capacity_children: Mapped[int] = mapped_column(Integer(), nullable=False, server_default="0")
+    nightly_rate_cents: Mapped[int] = mapped_column(
+        Integer(), nullable=False, server_default="0"
+    )
     amenities_json: Mapped[list[str]] = mapped_column(JSON(), nullable=False)
     active: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default=sql_text("1"))
 

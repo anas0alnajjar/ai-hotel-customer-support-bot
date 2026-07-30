@@ -4,10 +4,11 @@ import { useAuth } from '../auth/AuthContext'
 import { useI18n } from '../i18n/I18nContext'
 import type { Role } from '../types'
 
-const nav: { to: string; key: 'overview' | 'conversations' | 'knowledge' | 'requests' | 'evaluations'; icon: string; roles: Role[] }[] = [
+const nav: { to: string; key: 'overview' | 'conversations' | 'knowledge' | 'hotelData' | 'requests' | 'evaluations'; icon: string; roles: Role[] }[] = [
   { to: '/', key: 'overview', icon: '⌂', roles: ['admin', 'support', 'evaluator'] },
   { to: '/conversations', key: 'conversations', icon: '◫', roles: ['admin', 'support', 'evaluator'] },
   { to: '/knowledge', key: 'knowledge', icon: '▤', roles: ['admin'] },
+  { to: '/hotel-data', key: 'hotelData', icon: '▦', roles: ['admin'] },
   { to: '/requests', key: 'requests', icon: '◇', roles: ['admin', 'support'] },
   { to: '/evaluations', key: 'evaluations', icon: '⌁', roles: ['admin', 'evaluator'] },
 ]

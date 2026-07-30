@@ -23,3 +23,28 @@ export interface KnowledgeDetail { document: Knowledge; revisions: KnowledgeRevi
 export interface ServiceRequest { id: string; tracking_code: string; request_type: string; category: string; room_number: string; description: string; urgency: string; status: string; created_at: string; updated_at: string; completed_at: string | null }
 export interface Evaluation { id: string; dataset_version: string; system_versions: Record<string, unknown>; metrics: Record<string, unknown> | null; status: string; started_at: string | null; finished_at: string | null; error_summary: string | null; created_at: string }
 export interface Health { status: 'ok' | 'degraded' | 'not_ready'; service: string; version: string; checks: Record<string, string> }
+
+export interface RoomType {
+  id: string; code: string; name_ar: string; name_en: string
+  capacity_adults: number; capacity_children: number
+  nightly_rate_cents: number; currency: string; active: boolean
+}
+export interface HotelRoom {
+  id: string; room_number: string; room_type_id: string; room_type_code: string
+  floor: number; operational_status: string
+}
+export interface Booking {
+  id: string; reference: string; guest_name_masked: string
+  check_in: string; check_out: string; room_type_id: string
+  room_type_code: string; room_id: string | null; room_number: string | null
+  adults: number; children: number; status: string
+}
+export interface BookingMutation {
+  booking: Booking; verification_code_once: string | null
+}
+export interface DemoCredential {
+  booking_reference: string; verification_code: string
+}
+export interface DemoCredentials {
+  label: string; dataset_version: string; credentials: DemoCredential[]
+}

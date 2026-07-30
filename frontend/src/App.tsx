@@ -7,6 +7,7 @@ import { ConversationDetailPage } from './pages/ConversationDetailPage'
 import { ConversationsPage } from './pages/ConversationsPage'
 import { EvaluationsPage } from './pages/EvaluationsPage'
 import { KnowledgePage } from './pages/KnowledgePage'
+import { HotelDataPage } from './pages/HotelDataPage'
 import { LoginPage } from './pages/LoginPage'
 import { OverviewPage } from './pages/OverviewPage'
 import { ServiceRequestsPage } from './pages/ServiceRequestsPage'
@@ -15,12 +16,14 @@ import type { Role } from './types'
 const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 15_000, retry: 1, refetchOnWindowFocus: false } } })
 
 function Protected() {
-  const { admin } = useAuth()
+  const { admin, status } = useAuth()
+  if (status === 'restoring') return <main className="route-loading" aria-busy="true">Restoring secure session…</main>
   return admin ? <Outlet /> : <Navigate to="/login" replace />
 }
 
 function RoleRoute({ roles }: { roles: Role[] }) {
-  const { admin } = useAuth()
+  const { admin, status } = useAuth()
+  if (status === 'restoring') return null
   return admin && roles.includes(admin.role) ? <Outlet /> : <Navigate to="/" replace />
 }
 
@@ -32,6 +35,7 @@ export function App() {
       <Route path="conversations" element={<ConversationsPage />} />
       <Route path="conversations/:id" element={<ConversationDetailPage />} />
       <Route element={<RoleRoute roles={['admin']} />}><Route path="knowledge" element={<KnowledgePage />} /></Route>
+      <Route element={<RoleRoute roles={['admin']} />}><Route path="hotel-data" element={<HotelDataPage />} /></Route>
       <Route element={<RoleRoute roles={['admin', 'support']} />}><Route path="requests" element={<ServiceRequestsPage />} /></Route>
       <Route element={<RoleRoute roles={['admin', 'evaluator']} />}><Route path="evaluations" element={<EvaluationsPage />} /></Route>
     </Route></Route>

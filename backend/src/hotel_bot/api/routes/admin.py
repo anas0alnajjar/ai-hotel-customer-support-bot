@@ -1,6 +1,7 @@
 """Authenticated administration HTTP contracts with explicit RBAC."""
 
 import math
+from datetime import date
 from pathlib import Path
 from typing import Annotated, Literal
 from uuid import UUID
@@ -37,16 +38,28 @@ from hotel_bot.domain.admin.errors import (
 )
 from hotel_bot.domain.admin.models import (
     AdminPrincipal,
+    BookingAdminItem,
+    BookingMutationResult,
     ConversationAdminDetail,
     ConversationAdminItem,
+    DemoCredentialItem,
+    DemoCredentials,
     EvaluationAdminItem,
     FeedbackAdminItem,
     KnowledgeAdminDetail,
     KnowledgeAdminItem,
+    RoomAdminItem,
+    RoomTypeAdminItem,
     ServiceRequestAdminItem,
 )
 from hotel_bot.domain.conversation.enums import ConversationStatus
-from hotel_bot.domain.hotel.enums import ServiceRequestStatus, ServiceRequestType, Urgency
+from hotel_bot.domain.hotel.enums import (
+    BookingStatus,
+    RoomOperationalStatus,
+    ServiceRequestStatus,
+    ServiceRequestType,
+    Urgency,
+)
 from hotel_bot.domain.hotel.errors import InvalidStatusTransition
 from hotel_bot.domain.knowledge.enums import KnowledgeStatus, SourceFormat
 from hotel_bot.domain.knowledge.errors import KnowledgeError
@@ -55,6 +68,7 @@ from hotel_bot.infrastructure.database import DatabaseManager
 from hotel_bot.infrastructure.repositories.admin import SQLAlchemyAdminRepository
 from hotel_bot.infrastructure.repositories.knowledge import SQLAlchemyKnowledgeRepository
 from hotel_bot.persistence.enums import AdminRole, EscalationStatus, EvaluationStatus
+from hotel_bot.seed import HotelSeeder, load_seed_dataset
 
 router = APIRouter()
 bearer = HTTPBearer(auto_error=False)
@@ -182,6 +196,83 @@ class EvaluationRequest(BaseModel):
     dataset_version: Literal["hotel-support-baseline-v1"] = "hotel-support-baseline-v1"
 
 
+class RoomTypeUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name_ar: str | None = Field(default=None, min_length=2, max_length=255)
+    name_en: str | None = Field(default=None, min_length=2, max_length=255)
+    capacity_adults: int | None = Field(default=None, ge=1, le=8)
+    capacity_children: int | None = Field(default=None, ge=0, le=8)
+    nightly_rate_cents: int | None = Field(
+        default=None,
+        ge=0,
+        le=10_000_000,
+    )
+    active: bool | None = None
+
+
+class RoomUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    room_type_id: UUID | None = None
+    floor: int | None = Field(default=None, ge=0, le=100)
+    operational_status: RoomOperationalStatus | None = None
+
+
+class BookingCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reference: str = Field(pattern=r"^BKG-[A-Z0-9-]{6,24}$")
+    guest_name_masked: str = Field(min_length=3, max_length=255)
+    check_in: date
+    check_out: date
+    room_type_id: UUID
+    room_id: UUID | None = None
+    adults: int = Field(ge=1, le=8)
+    children: int = Field(default=0, ge=0, le=8)
+    status: BookingStatus = BookingStatus.CONFIRMED
+    verification_value: SecretStr | None = Field(
+        default=None,
+        min_length=4,
+        max_length=64,
+    )
+
+
+class BookingUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    guest_name_masked: str | None = Field(
+        default=None,
+        min_length=3,
+        max_length=255,
+    )
+    check_in: date | None = None
+    check_out: date | None = None
+    room_type_id: UUID | None = None
+    room_id: UUID | None = None
+    adults: int | None = Field(default=None, ge=1, le=8)
+    children: int | None = Field(default=None, ge=0, le=8)
+    status: BookingStatus | None = None
+    verification_value: SecretStr | None = Field(
+        default=None,
+        min_length=4,
+        max_length=64,
+    )
+
+
+class DemoResetRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    confirmation: Literal["RESET DEMO DATA"]
+
+
+class DemoResetResponse(BaseModel):
+    dataset_version: str
+    inserted_total: int
+    existing_total: int
+    reset: bool = True
+
+
 def _service(
     session: object, runtime: AdminApplicationRuntime, settings: Settings
 ) -> AdminAuthService:
@@ -260,6 +351,14 @@ def _not_found(exc: AdminResourceNotFoundError) -> HTTPException:
     return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=exc.code)
 
 
+def _require_demo(settings: Settings) -> None:
+    if not settings.demo_mode:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="demo_mode_disabled",
+        )
+
+
 @router.post("/auth/login", response_model=LoginResponse)
 async def login(
     payload: LoginRequest,
@@ -298,6 +397,320 @@ async def login(
 @router.get("/auth/me", response_model=AdminPrincipal)
 async def me(principal: Annotated[AdminPrincipal, Depends(current_admin)]) -> AdminPrincipal:
     return principal
+
+
+@router.get("/hotel-data/room-types", response_model=tuple[RoomTypeAdminItem, ...])
+async def list_room_types(
+    request: Request,
+    database: Annotated[DatabaseManager, Depends(get_database_manager)],
+    runtime: Annotated[AdminApplicationRuntime, Depends(get_admin_runtime)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    principal: Annotated[AdminPrincipal, Depends(current_admin)],
+) -> tuple[RoomTypeAdminItem, ...]:
+    await _authorize(
+        principal,
+        ADMIN_ONLY,
+        request=request,
+        database=database,
+        runtime=runtime,
+        settings=settings,
+    )
+    async with database.session() as session:
+        return await SQLAlchemyAdminRepository(session).list_room_types()
+
+
+@router.patch("/hotel-data/room-types/{room_type_id}", response_model=RoomTypeAdminItem)
+async def update_room_type(
+    room_type_id: UUID,
+    payload: RoomTypeUpdateRequest,
+    request: Request,
+    database: Annotated[DatabaseManager, Depends(get_database_manager)],
+    runtime: Annotated[AdminApplicationRuntime, Depends(get_admin_runtime)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    principal: Annotated[AdminPrincipal, Depends(current_admin)],
+) -> RoomTypeAdminItem:
+    await _authorize(
+        principal,
+        ADMIN_ONLY,
+        request=request,
+        database=database,
+        runtime=runtime,
+        settings=settings,
+    )
+    try:
+        async with database.transaction() as session:
+            return await SQLAlchemyAdminRepository(session).update_room_type(
+                room_type_id,
+                values=payload.model_dump(exclude_unset=True),
+                principal=principal,
+                correlation_id=str(request.state.correlation_id),
+            )
+    except AdminResourceNotFoundError as exc:
+        raise _not_found(exc) from exc
+
+
+@router.get("/hotel-data/rooms", response_model=tuple[RoomAdminItem, ...])
+async def list_rooms(
+    request: Request,
+    database: Annotated[DatabaseManager, Depends(get_database_manager)],
+    runtime: Annotated[AdminApplicationRuntime, Depends(get_admin_runtime)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    principal: Annotated[AdminPrincipal, Depends(current_admin)],
+    room_type_id: UUID | None = None,
+    room_status: Annotated[
+        RoomOperationalStatus | None,
+        Query(alias="status"),
+    ] = None,
+) -> tuple[RoomAdminItem, ...]:
+    await _authorize(
+        principal,
+        ADMIN_ONLY,
+        request=request,
+        database=database,
+        runtime=runtime,
+        settings=settings,
+    )
+    async with database.session() as session:
+        return await SQLAlchemyAdminRepository(session).list_rooms(
+            room_type_id=room_type_id,
+            status=room_status,
+        )
+
+
+@router.patch("/hotel-data/rooms/{room_id}", response_model=RoomAdminItem)
+async def update_room(
+    room_id: UUID,
+    payload: RoomUpdateRequest,
+    request: Request,
+    database: Annotated[DatabaseManager, Depends(get_database_manager)],
+    runtime: Annotated[AdminApplicationRuntime, Depends(get_admin_runtime)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    principal: Annotated[AdminPrincipal, Depends(current_admin)],
+) -> RoomAdminItem:
+    await _authorize(
+        principal,
+        ADMIN_ONLY,
+        request=request,
+        database=database,
+        runtime=runtime,
+        settings=settings,
+    )
+    try:
+        async with database.transaction() as session:
+            return await SQLAlchemyAdminRepository(session).update_room(
+                room_id,
+                room_type_id=payload.room_type_id,
+                floor=payload.floor,
+                operational_status=payload.operational_status,
+                principal=principal,
+                correlation_id=str(request.state.correlation_id),
+            )
+    except AdminResourceNotFoundError as exc:
+        raise _not_found(exc) from exc
+    except AdminValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.code) from exc
+
+
+@router.get("/hotel-data/bookings", response_model=tuple[BookingAdminItem, ...])
+async def list_bookings(
+    request: Request,
+    database: Annotated[DatabaseManager, Depends(get_database_manager)],
+    runtime: Annotated[AdminApplicationRuntime, Depends(get_admin_runtime)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    principal: Annotated[AdminPrincipal, Depends(current_admin)],
+) -> tuple[BookingAdminItem, ...]:
+    await _authorize(
+        principal,
+        ADMIN_ONLY,
+        request=request,
+        database=database,
+        runtime=runtime,
+        settings=settings,
+    )
+    async with database.session() as session:
+        return await SQLAlchemyAdminRepository(session).list_bookings()
+
+
+@router.post(
+    "/hotel-data/bookings",
+    response_model=BookingMutationResult,
+    status_code=201,
+)
+async def create_booking(
+    payload: BookingCreateRequest,
+    request: Request,
+    database: Annotated[DatabaseManager, Depends(get_database_manager)],
+    runtime: Annotated[AdminApplicationRuntime, Depends(get_admin_runtime)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    principal: Annotated[AdminPrincipal, Depends(current_admin)],
+) -> BookingMutationResult:
+    await _authorize(
+        principal,
+        ADMIN_ONLY,
+        request=request,
+        database=database,
+        runtime=runtime,
+        settings=settings,
+    )
+    try:
+        async with database.transaction() as session:
+            return await SQLAlchemyAdminRepository(session).create_booking(
+                reference=payload.reference,
+                guest_name_masked=payload.guest_name_masked,
+                check_in=payload.check_in,
+                check_out=payload.check_out,
+                room_type_id=payload.room_type_id,
+                room_id=payload.room_id,
+                adults=payload.adults,
+                children=payload.children,
+                status=payload.status,
+                verification_value=(
+                    payload.verification_value.get_secret_value()
+                    if payload.verification_value
+                    else None
+                ),
+                principal=principal,
+                correlation_id=str(request.state.correlation_id),
+            )
+    except AdminValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.code) from exc
+
+
+@router.patch(
+    "/hotel-data/bookings/{booking_id}",
+    response_model=BookingMutationResult,
+)
+async def update_booking(
+    booking_id: UUID,
+    payload: BookingUpdateRequest,
+    request: Request,
+    database: Annotated[DatabaseManager, Depends(get_database_manager)],
+    runtime: Annotated[AdminApplicationRuntime, Depends(get_admin_runtime)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    principal: Annotated[AdminPrincipal, Depends(current_admin)],
+) -> BookingMutationResult:
+    await _authorize(
+        principal,
+        ADMIN_ONLY,
+        request=request,
+        database=database,
+        runtime=runtime,
+        settings=settings,
+    )
+    values = payload.model_dump(exclude_unset=True)
+    verification = values.get("verification_value")
+    if isinstance(verification, SecretStr):
+        values["verification_value"] = verification.get_secret_value()
+    try:
+        async with database.transaction() as session:
+            return await SQLAlchemyAdminRepository(session).update_booking(
+                booking_id,
+                values=values,
+                principal=principal,
+                correlation_id=str(request.state.correlation_id),
+            )
+    except AdminResourceNotFoundError as exc:
+        raise _not_found(exc) from exc
+    except AdminValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.code) from exc
+
+
+@router.post(
+    "/hotel-data/bookings/{booking_id}/reset-verification",
+    response_model=BookingMutationResult,
+)
+async def reset_booking_verification(
+    booking_id: UUID,
+    request: Request,
+    database: Annotated[DatabaseManager, Depends(get_database_manager)],
+    runtime: Annotated[AdminApplicationRuntime, Depends(get_admin_runtime)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    principal: Annotated[AdminPrincipal, Depends(current_admin)],
+) -> BookingMutationResult:
+    await _authorize(
+        principal,
+        ADMIN_ONLY,
+        request=request,
+        database=database,
+        runtime=runtime,
+        settings=settings,
+    )
+    try:
+        async with database.transaction() as session:
+            return await SQLAlchemyAdminRepository(
+                session
+            ).reset_booking_verification(
+                booking_id,
+                principal=principal,
+                correlation_id=str(request.state.correlation_id),
+            )
+    except AdminResourceNotFoundError as exc:
+        raise _not_found(exc) from exc
+
+
+@router.get(
+    "/hotel-data/demo-credentials",
+    response_model=DemoCredentials,
+)
+async def get_demo_credentials(
+    request: Request,
+    database: Annotated[DatabaseManager, Depends(get_database_manager)],
+    runtime: Annotated[AdminApplicationRuntime, Depends(get_admin_runtime)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    principal: Annotated[AdminPrincipal, Depends(current_admin)],
+) -> DemoCredentials:
+    await _authorize(
+        principal,
+        ADMIN_ONLY,
+        request=request,
+        database=database,
+        runtime=runtime,
+        settings=settings,
+    )
+    _require_demo(settings)
+    dataset = load_seed_dataset()
+    return DemoCredentials(
+        dataset_version=dataset.dataset_version,
+        credentials=tuple(
+            DemoCredentialItem(
+                booking_reference=item.reference,
+                verification_code=item.verification_value,
+            )
+            for item in dataset.bookings
+        ),
+    )
+
+
+@router.post("/hotel-data/reset", response_model=DemoResetResponse)
+async def reset_demo_data(
+    payload: DemoResetRequest,
+    request: Request,
+    database: Annotated[DatabaseManager, Depends(get_database_manager)],
+    runtime: Annotated[AdminApplicationRuntime, Depends(get_admin_runtime)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    principal: Annotated[AdminPrincipal, Depends(current_admin)],
+) -> DemoResetResponse:
+    await _authorize(
+        principal,
+        ADMIN_ONLY,
+        request=request,
+        database=database,
+        runtime=runtime,
+        settings=settings,
+    )
+    _require_demo(settings)
+    async with database.transaction() as session:
+        result = await HotelSeeder(session).reset()
+        await SQLAlchemyAdminRepository(session).record_demo_reset(
+            dataset_version=result.dataset_version,
+            principal=principal,
+            correlation_id=str(request.state.correlation_id),
+        )
+    return DemoResetResponse(
+        dataset_version=result.dataset_version,
+        inserted_total=result.inserted_total,
+        existing_total=result.existing_total,
+    )
 
 
 @router.get("/conversations", response_model=ConversationPage)

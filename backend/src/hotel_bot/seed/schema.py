@@ -38,6 +38,7 @@ class RoomTypeSeed(SeedModel):
     descriptions: dict[str, str]
     capacity_adults: int = Field(gt=0, le=8)
     capacity_children: int = Field(ge=0, le=8)
+    nightly_rate_cents: int = Field(ge=0, le=10_000_000)
     amenities: list[str] = Field(min_length=1)
     active: bool = True
 

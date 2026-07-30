@@ -1,13 +1,19 @@
 """Typed administration projections independent from HTTP and SQLAlchemy."""
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
 from hotel_bot.domain.conversation.enums import ConversationStatus, MessageDirection
-from hotel_bot.domain.hotel.enums import ServiceRequestStatus, ServiceRequestType, Urgency
+from hotel_bot.domain.hotel.enums import (
+    BookingStatus,
+    RoomOperationalStatus,
+    ServiceRequestStatus,
+    ServiceRequestType,
+    Urgency,
+)
 from hotel_bot.domain.knowledge.enums import KnowledgeStatus, SourceFormat
 from hotel_bot.persistence.enums import (
     AdminRole,
@@ -184,6 +190,70 @@ class EvaluationAdminItem(BaseModel):
     finished_at: datetime | None
     error_summary: str | None
     created_at: datetime
+
+
+class RoomTypeAdminItem(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    id: UUID
+    code: str
+    name_ar: str
+    name_en: str
+    capacity_adults: int
+    capacity_children: int
+    nightly_rate_cents: int
+    currency: str
+    active: bool
+
+
+class RoomAdminItem(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    id: UUID
+    room_number: str
+    room_type_id: UUID
+    room_type_code: str
+    floor: int
+    operational_status: RoomOperationalStatus
+
+
+class BookingAdminItem(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    id: UUID
+    reference: str
+    guest_name_masked: str
+    check_in: date
+    check_out: date
+    room_type_id: UUID
+    room_type_code: str
+    room_id: UUID | None
+    room_number: str | None
+    adults: int
+    children: int
+    status: BookingStatus
+
+
+class BookingMutationResult(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    booking: BookingAdminItem
+    verification_code_once: str | None = None
+
+
+class DemoCredentialItem(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    booking_reference: str
+    verification_code: str
+
+
+class DemoCredentials(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    label: str = "Demo data — not real guest credentials"
+    dataset_version: str
+    credentials: tuple[DemoCredentialItem, ...]
 
 
 class Page(BaseModel):

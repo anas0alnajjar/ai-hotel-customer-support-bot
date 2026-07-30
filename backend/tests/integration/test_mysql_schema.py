@@ -78,7 +78,7 @@ def test_migrated_mysql_schema_matches_metadata() -> None:
         "service_requests",
         "tool_executions",
     }
-    assert revision == "b2d4e6f8091a"
+    assert revision == "c7e91a4f2d10"
 
 
 def test_transaction_boundary_commits_and_rolls_back_atomically() -> None:

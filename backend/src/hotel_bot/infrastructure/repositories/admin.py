@@ -1,5 +1,6 @@
 """MySQL administration projections, security events, and controlled mutations."""
 
+import secrets
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
@@ -8,10 +9,15 @@ from uuid import UUID
 from sqlalchemy import and_, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from hotel_bot.domain.admin.errors import AdminResourceNotFoundError
+from hotel_bot.domain.admin.errors import (
+    AdminResourceNotFoundError,
+    AdminValidationError,
+)
 from hotel_bot.domain.admin.models import (
     AdminCredential,
     AdminPrincipal,
+    BookingAdminItem,
+    BookingMutationResult,
     ConversationAdminDetail,
     ConversationAdminItem,
     EscalationAdminItem,
@@ -21,6 +27,8 @@ from hotel_bot.domain.admin.models import (
     KnowledgeAdminItem,
     KnowledgeRevisionAdminItem,
     MessageAdminItem,
+    RoomAdminItem,
+    RoomTypeAdminItem,
     ServiceRequestAdminItem,
     ToolEventAdminItem,
 )
@@ -30,8 +38,15 @@ from hotel_bot.domain.admin.security import (
     redact_admin_text,
 )
 from hotel_bot.domain.conversation.enums import ConversationStatus, MessageDirection
-from hotel_bot.domain.hotel.enums import ServiceRequestStatus, ServiceRequestType, Urgency
+from hotel_bot.domain.hotel.enums import (
+    BookingStatus,
+    RoomOperationalStatus,
+    ServiceRequestStatus,
+    ServiceRequestType,
+    Urgency,
+)
 from hotel_bot.domain.hotel.policies import validate_status_transition
+from hotel_bot.domain.hotel.security import hash_verification_value
 from hotel_bot.domain.knowledge.enums import KnowledgeStatus, SourceFormat
 from hotel_bot.persistence.enums import (
     ActorType,
@@ -46,6 +61,7 @@ from hotel_bot.persistence.enums import (
 from hotel_bot.persistence.models import (
     AdminUser,
     AuditEvent,
+    Booking,
     Conversation,
     Escalation,
     EvaluationRun,
@@ -56,6 +72,7 @@ from hotel_bot.persistence.models import (
     LLMRun,
     Message,
     Room,
+    RoomType,
     ServiceRequest,
     ToolExecution,
 )
@@ -543,6 +560,366 @@ class SQLAlchemyAdminRepository:
         await self._session.flush()
         return self._feedback_item(row)
 
+    async def list_room_types(self) -> tuple[RoomTypeAdminItem, ...]:
+        rows = (
+            await self._session.scalars(
+                select(RoomType).order_by(RoomType.code)
+            )
+        ).all()
+        return tuple(self._room_type_item(row) for row in rows)
+
+    async def update_room_type(
+        self,
+        room_type_id: UUID,
+        *,
+        values: dict[str, Any],
+        principal: AdminPrincipal,
+        correlation_id: str,
+    ) -> RoomTypeAdminItem:
+        row = await self._session.get(RoomType, room_type_id)
+        if row is None:
+            raise AdminResourceNotFoundError(
+                "room_type_not_found",
+                "room type was not found",
+            )
+        if "name_ar" in values:
+            row.name_json = {**row.name_json, "ar": values["name_ar"]}
+        if "name_en" in values:
+            row.name_json = {**row.name_json, "en": values["name_en"]}
+        for field in (
+            "capacity_adults",
+            "capacity_children",
+            "nightly_rate_cents",
+            "active",
+        ):
+            if field in values:
+                setattr(row, field, values[field])
+        self._audit(
+            principal,
+            action="room_type_updated",
+            resource_type="room_type",
+            resource_id=row.id,
+            correlation_id=correlation_id,
+            metadata={"fields": sorted(values)},
+        )
+        await self._session.flush()
+        return self._room_type_item(row)
+
+    async def list_rooms(
+        self,
+        *,
+        room_type_id: UUID | None,
+        status: RoomOperationalStatus | None,
+    ) -> tuple[RoomAdminItem, ...]:
+        filters: list[Any] = []
+        if room_type_id is not None:
+            filters.append(Room.room_type_id == room_type_id)
+        if status is not None:
+            filters.append(Room.operational_status == status)
+        rows = (
+            await self._session.execute(
+                select(Room, RoomType.code)
+                .join(RoomType, RoomType.id == Room.room_type_id)
+                .where(*filters)
+                .order_by(Room.room_number)
+            )
+        ).all()
+        return tuple(
+            self._room_item(room, room_type_code)
+            for room, room_type_code in rows
+        )
+
+    async def update_room(
+        self,
+        room_id: UUID,
+        *,
+        room_type_id: UUID | None,
+        floor: int | None,
+        operational_status: RoomOperationalStatus | None,
+        principal: AdminPrincipal,
+        correlation_id: str,
+    ) -> RoomAdminItem:
+        row = await self._session.get(Room, room_id)
+        if row is None:
+            raise AdminResourceNotFoundError(
+                "room_not_found",
+                "room was not found",
+            )
+        if room_type_id is not None:
+            room_type = await self._session.get(RoomType, room_type_id)
+            if room_type is None:
+                raise AdminValidationError(
+                    "room_type_not_found",
+                    "room type was not found",
+                )
+            row.room_type_id = room_type_id
+        if floor is not None:
+            row.floor = floor
+        if operational_status is not None:
+            row.operational_status = operational_status
+        room_type_code = await self._session.scalar(
+            select(RoomType.code).where(RoomType.id == row.room_type_id)
+        )
+        assert room_type_code is not None
+        self._audit(
+            principal,
+            action="room_updated",
+            resource_type="room",
+            resource_id=row.id,
+            correlation_id=correlation_id,
+            metadata={
+                "room_type_changed": room_type_id is not None,
+                "status": (
+                    operational_status.value
+                    if operational_status
+                    else None
+                ),
+            },
+        )
+        await self._session.flush()
+        return self._room_item(row, room_type_code)
+
+    async def list_bookings(self) -> tuple[BookingAdminItem, ...]:
+        rows = (
+            await self._session.execute(
+                select(
+                    Booking,
+                    RoomType.code,
+                    Room.room_number,
+                )
+                .join(RoomType, RoomType.id == Booking.room_type_id)
+                .outerjoin(Room, Room.id == Booking.room_id)
+                .order_by(Booking.check_in.desc(), Booking.reference)
+            )
+        ).all()
+        return tuple(
+            self._booking_item(booking, room_type_code, room_number)
+            for booking, room_type_code, room_number in rows
+        )
+
+    async def create_booking(
+        self,
+        *,
+        reference: str,
+        guest_name_masked: str,
+        check_in: Any,
+        check_out: Any,
+        room_type_id: UUID,
+        room_id: UUID | None,
+        adults: int,
+        children: int,
+        status: BookingStatus,
+        verification_value: str | None,
+        principal: AdminPrincipal,
+        correlation_id: str,
+    ) -> BookingMutationResult:
+        existing = await self._session.scalar(
+            select(Booking.id).where(Booking.reference == reference).limit(1)
+        )
+        if existing is not None:
+            raise AdminValidationError(
+                "booking_reference_exists",
+                "booking reference already exists",
+            )
+        room_type, room, room_number = await self._validate_booking_relations(
+            room_type_id=room_type_id,
+            room_id=room_id,
+            check_in=check_in,
+            check_out=check_out,
+            adults=adults,
+            children=children,
+        )
+        code = verification_value or f"{secrets.randbelow(1_000_000):06d}"
+        row = Booking(
+            reference=reference,
+            guest_verification_hash=hash_verification_value(
+                code,
+                salt=secrets.token_bytes(16),
+            ),
+            guest_name_masked=guest_name_masked,
+            check_in=check_in,
+            check_out=check_out,
+            room_type_id=room_type.id,
+            room_id=room.id if room else None,
+            adults=adults,
+            children=children,
+            status=status,
+        )
+        self._session.add(row)
+        await self._session.flush()
+        self._audit(
+            principal,
+            action="demo_booking_created",
+            resource_type="booking",
+            resource_id=row.id,
+            correlation_id=correlation_id,
+            metadata={"reference": reference, "verification_rotated": True},
+        )
+        await self._session.flush()
+        return BookingMutationResult(
+            booking=self._booking_item(row, room_type.code, room_number),
+            verification_code_once=code,
+        )
+
+    async def update_booking(
+        self,
+        booking_id: UUID,
+        *,
+        values: dict[str, Any],
+        principal: AdminPrincipal,
+        correlation_id: str,
+    ) -> BookingMutationResult:
+        row = await self._session.get(Booking, booking_id)
+        if row is None:
+            raise AdminResourceNotFoundError(
+                "booking_not_found",
+                "booking was not found",
+            )
+        relation_fields = {
+            "check_in": values.get("check_in", row.check_in),
+            "check_out": values.get("check_out", row.check_out),
+            "room_type_id": values.get("room_type_id", row.room_type_id),
+            "room_id": values.get("room_id", row.room_id),
+            "adults": values.get("adults", row.adults),
+            "children": values.get("children", row.children),
+        }
+        room_type, room, room_number = await self._validate_booking_relations(
+            **relation_fields,
+        )
+        for field in (
+            "guest_name_masked",
+            "check_in",
+            "check_out",
+            "adults",
+            "children",
+            "status",
+        ):
+            if field in values:
+                setattr(row, field, values[field])
+        row.room_type_id = room_type.id
+        row.room_id = room.id if room else None
+        code = values.get("verification_value")
+        if code:
+            row.guest_verification_hash = hash_verification_value(
+                code,
+                salt=secrets.token_bytes(16),
+            )
+        self._audit(
+            principal,
+            action="demo_booking_updated",
+            resource_type="booking",
+            resource_id=row.id,
+            correlation_id=correlation_id,
+            metadata={
+                "fields": sorted(values),
+                "verification_rotated": bool(code),
+            },
+        )
+        await self._session.flush()
+        return BookingMutationResult(
+            booking=self._booking_item(row, room_type.code, room_number),
+            verification_code_once=code,
+        )
+
+    async def reset_booking_verification(
+        self,
+        booking_id: UUID,
+        *,
+        principal: AdminPrincipal,
+        correlation_id: str,
+    ) -> BookingMutationResult:
+        row = await self._session.get(Booking, booking_id)
+        if row is None:
+            raise AdminResourceNotFoundError(
+                "booking_not_found",
+                "booking was not found",
+            )
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        row.guest_verification_hash = hash_verification_value(
+            code,
+            salt=secrets.token_bytes(16),
+        )
+        room_type_code = await self._session.scalar(
+            select(RoomType.code).where(RoomType.id == row.room_type_id)
+        )
+        room_number = (
+            await self._session.scalar(
+                select(Room.room_number).where(Room.id == row.room_id)
+            )
+            if row.room_id
+            else None
+        )
+        assert room_type_code is not None
+        self._audit(
+            principal,
+            action="booking_verification_reset",
+            resource_type="booking",
+            resource_id=row.id,
+            correlation_id=correlation_id,
+            metadata={"verification_rotated": True},
+        )
+        await self._session.flush()
+        return BookingMutationResult(
+            booking=self._booking_item(row, room_type_code, room_number),
+            verification_code_once=code,
+        )
+
+    async def record_demo_reset(
+        self,
+        *,
+        dataset_version: str,
+        principal: AdminPrincipal,
+        correlation_id: str,
+    ) -> None:
+        self._audit(
+            principal,
+            action="demo_data_reset",
+            resource_type="hotel_seed_dataset",
+            resource_id=None,
+            correlation_id=correlation_id,
+            metadata={"dataset_version": dataset_version},
+        )
+        await self._session.flush()
+
+    async def _validate_booking_relations(
+        self,
+        *,
+        room_type_id: UUID,
+        room_id: UUID | None,
+        check_in: Any,
+        check_out: Any,
+        adults: int,
+        children: int,
+    ) -> tuple[RoomType, Room | None, str | None]:
+        if check_out <= check_in:
+            raise AdminValidationError(
+                "invalid_booking_date_range",
+                "check-out must be after check-in",
+            )
+        room_type = await self._session.get(RoomType, room_type_id)
+        if room_type is None:
+            raise AdminValidationError(
+                "room_type_not_found",
+                "room type was not found",
+            )
+        if (
+            adults > room_type.capacity_adults
+            or children > room_type.capacity_children
+        ):
+            raise AdminValidationError(
+                "booking_exceeds_room_capacity",
+                "booking exceeds room capacity",
+            )
+        room = await self._session.get(Room, room_id) if room_id else None
+        if room_id and room is None:
+            raise AdminValidationError("room_not_found", "room was not found")
+        if room and room.room_type_id != room_type_id:
+            raise AdminValidationError(
+                "room_type_mismatch",
+                "assigned room does not match room type",
+            )
+        return room_type, room, room.room_number if room else None
+
     async def operational_evaluation_metrics(self) -> dict[str, Any]:
         llm_rows = (
             await self._session.execute(
@@ -554,6 +931,16 @@ class SQLAlchemyAdminRepository:
                 select(ToolExecution.result_status, func.count(ToolExecution.id)).group_by(
                     ToolExecution.result_status
                 )
+            )
+        ).all()
+        rejection_rows = (
+            await self._session.execute(
+                select(ToolExecution.error_code, func.count(ToolExecution.id))
+                .where(
+                    ToolExecution.result_status
+                    == ToolExecutionStatus.REJECTED
+                )
+                .group_by(ToolExecution.error_code)
             )
         ).all()
         feedback_rows = (
@@ -568,6 +955,15 @@ class SQLAlchemyAdminRepository:
         feedback_counts = {label or "unlabeled": int(count) for label, count in feedback_rows}
         llm_total = sum(llm_counts.values())
         tool_total = sum(tool_counts.values())
+        expected_rejections = tool_counts.get("rejected", 0)
+        unexpected_failures = (
+            tool_counts.get("failed", 0)
+            + tool_counts.get("timed_out", 0)
+        )
+        valid_tool_requests = (
+            tool_counts.get("succeeded", 0)
+            + unexpected_failures
+        )
         avg_rating = await self._session.scalar(
             select(func.avg(Feedback.rating)).where(
                 Feedback.source == FeedbackSource.EVALUATOR,
@@ -590,9 +986,22 @@ class SQLAlchemyAdminRepository:
             },
             "tool_execution": {
                 "status_counts": tool_counts,
+                "expected_rejection_error_counts": {
+                    code or "unspecified": int(count)
+                    for code, count in rejection_rows
+                },
                 "sample_count": tool_total,
-                "success_rate": round(tool_counts.get("succeeded", 0) / tool_total, 4)
-                if tool_total
+                "valid_tool_requests_succeeded": tool_counts.get(
+                    "succeeded", 0
+                ),
+                "expected_requests_rejected": expected_rejections,
+                "unexpected_execution_failures": unexpected_failures,
+                "valid_request_success_rate": round(
+                    tool_counts.get("succeeded", 0)
+                    / valid_tool_requests,
+                    4,
+                )
+                if valid_tool_requests
                 else None,
             },
         }
@@ -780,6 +1189,52 @@ class SQLAlchemyAdminRepository:
             revision_count=revision_count,
             created_at=row.created_at,
             updated_at=row.updated_at,
+        )
+
+    @staticmethod
+    def _room_type_item(row: RoomType) -> RoomTypeAdminItem:
+        return RoomTypeAdminItem(
+            id=row.id,
+            code=row.code,
+            name_ar=row.name_json.get("ar", row.code),
+            name_en=row.name_json.get("en", row.code),
+            capacity_adults=row.capacity_adults,
+            capacity_children=row.capacity_children,
+            nightly_rate_cents=row.nightly_rate_cents,
+            currency="USD",
+            active=row.active,
+        )
+
+    @staticmethod
+    def _room_item(row: Room, room_type_code: str) -> RoomAdminItem:
+        return RoomAdminItem(
+            id=row.id,
+            room_number=row.room_number,
+            room_type_id=row.room_type_id,
+            room_type_code=room_type_code,
+            floor=row.floor,
+            operational_status=RoomOperationalStatus(row.operational_status),
+        )
+
+    @staticmethod
+    def _booking_item(
+        row: Booking,
+        room_type_code: str,
+        room_number: str | None,
+    ) -> BookingAdminItem:
+        return BookingAdminItem(
+            id=row.id,
+            reference=row.reference,
+            guest_name_masked=row.guest_name_masked,
+            check_in=row.check_in,
+            check_out=row.check_out,
+            room_type_id=row.room_type_id,
+            room_type_code=room_type_code,
+            room_id=row.room_id,
+            room_number=room_number,
+            adults=row.adults,
+            children=row.children,
+            status=BookingStatus(row.status),
         )
 
     @staticmethod
