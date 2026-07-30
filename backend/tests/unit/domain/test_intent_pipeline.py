@@ -194,6 +194,12 @@ def test_existing_booking_phrase_is_distinct_from_room_availability() -> None:
             RoutingDecision.KNOWLEDGE_CANDIDATE,
         ),
         (
+            "هل يوفر الفندق خدمة نقل من مطار دمشق وكم يلزم الحجز مسبقاً؟",
+            "ar",
+            IntentCode.HOTEL_INFO,
+            RoutingDecision.KNOWLEDGE_CANDIDATE,
+        ),
+        (
             "أريد فطوراً للغرفة 101",
             "ar",
             IntentCode.ROOM_SERVICE_REQUEST,
@@ -221,7 +227,11 @@ def test_acceptance_queries_reach_the_intended_architecture_path(
 ) -> None:
     loaded = load_intent_dataset(DATASET_PATH)
     classifier = NaiveBayesIntentClassifier(classifier_version=f"{ALGORITHM_VERSION}+acceptance")
-    classifier.fit(loaded.dataset.samples)
+    classifier.fit(
+        sample
+        for sample in loaded.dataset.samples
+        if sample.split is DatasetSplit.TRAIN
+    )
 
     result = SafeIntentRouter(classifier).route(text, language)
 

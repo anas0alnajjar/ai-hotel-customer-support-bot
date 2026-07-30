@@ -44,7 +44,10 @@ TRACKING_PATTERN = re.compile(
     re.IGNORECASE,
 )
 ROOM_PATTERN = re.compile(
-    r"(?:room|الغرف(?:ة|ه))\s*[:#-]?\s*([A-Za-z0-9-]{1,16})",
+    (
+        r"(?:my\s+room|room|(?:ل)?غرفت(?:ي|ك|ه|ها)|(?:ال)?غرف(?:ة|ه))"
+        r"\s*[:#-]?\s*([A-Za-z0-9-]{1,16})"
+    ),
     re.IGNORECASE,
 )
 LEADING_ROOM_PATTERN = re.compile(r"^\s*(\d{1,4})\b")
@@ -71,6 +74,10 @@ VERIFY_PATTERN = re.compile(
     ),
     re.IGNORECASE,
 )
+BARE_VERIFICATION_PATTERN = re.compile(
+    r"^\s*([A-Za-z0-9_-]{4,128})\s*$",
+    re.IGNORECASE,
+)
 GENERIC_ROOM_SERVICE_REQUESTS = frozenset(
     {
         "بدي خدمة الطعام الي الغرف",
@@ -79,6 +86,8 @@ GENERIC_ROOM_SERVICE_REQUESTS = frozenset(
         "اريد خدمة الطعام الي الغرفة",
         "خدمة الطعام الي الغرف",
         "خدمة الطعام الي الغرفة",
+        "خدمة الغرف",
+        "خدمة الغرفة",
         "i need room service",
         "room service",
     }
@@ -253,15 +262,62 @@ def _first(
 
 
 def _service_description(text: str) -> str | None:
-    normalized = normalize_text(text)
+    room_match = ROOM_PATTERN.search(text)
+    description = text
+    if (
+        room_match is not None
+        and re.search(
+            r"(?:my\s+room|غرفت(?:ي|نا))",
+            room_match.group(0),
+            re.IGNORECASE,
+        )
+    ):
+        start, end = room_match.span(1)
+        description = f"{text[:start]}{text[end:]}".strip(" \t\r\n,،:;-")
+
+    normalized = normalize_text(description)
     without_leading_room = re.sub(
-        r"^\d{1,4}\s+",
+        r"^\d{1,4}(?:\s+|$)",
         "",
         normalized,
     )
+    if not without_leading_room:
+        return None
     if without_leading_room in GENERIC_ROOM_SERVICE_REQUESTS:
         return None
-    return redact_sensitive_text(text)
+    return redact_sensitive_text(description)
+
+
+def _expand_short_service_description(
+    description: str,
+    state: ConversationState,
+) -> str:
+    """Keep a short follow-up as a valid description without weakening domain rules."""
+
+    normalized = " ".join(description.split())
+    if (
+        len(normalized) >= 10
+        or state.active_workflow
+        not in {
+            ActiveWorkflow.ROOM_SERVICE,
+            ActiveWorkflow.MAINTENANCE,
+        }
+    ):
+        return normalized
+
+    if re.search(r"[\u0600-\u06ff]", normalized):
+        prefix = (
+            "طلب صيانة: "
+            if state.active_workflow is ActiveWorkflow.MAINTENANCE
+            else "طلب خدمة غرف: "
+        )
+    else:
+        prefix = (
+            "Maintenance request: "
+            if state.active_workflow is ActiveWorkflow.MAINTENANCE
+            else "Room service request: "
+        )
+    return f"{prefix}{normalized}"
 
 
 def extract_parameters(
@@ -354,13 +410,26 @@ def extract_parameters(
         values["room_number"] = room_number
 
     booking = BOOKING_PATTERN.search(text)
+    tracking = TRACKING_PATTERN.search(text)
 
     verification = _first(
         VERIFY_PATTERN,
         text,
     )
-
-    tracking = TRACKING_PATTERN.search(text)
+    if (
+        verification is None
+        and state.active_workflow
+        in {
+            ActiveWorkflow.BOOKING_LOOKUP,
+            ActiveWorkflow.REQUEST_STATUS,
+        }
+        and booking is None
+        and tracking is None
+    ):
+        verification = _first(
+            BARE_VERIFICATION_PATTERN,
+            text,
+        )
 
     if booking:
         values["booking_reference"] = (
@@ -396,6 +465,11 @@ def extract_parameters(
             "meal",
             "dinner",
             "breakfast",
+            "lunch",
+            "drink",
+            "water",
+            "coffee",
+            "wine",
             "طعام",
             "أكل",
             "اكل",
@@ -404,6 +478,10 @@ def extract_parameters(
             "عشاء",
             "فطور",
             "مشروب",
+            "مشروبات",
+            "ماء",
+            "مياه",
+            "قهوة",
         )
     ):
         category = "food_and_beverage"
@@ -432,10 +510,8 @@ def extract_parameters(
     elif any(
         token in normalized
         for token in (
-            "water",
             "leak",
             "toilet",
-            "مياه",
             "تسريب",
             "مرحاض",
         )
@@ -449,7 +525,10 @@ def extract_parameters(
 
     description = _service_description(text)
     if description:
-        values["description"] = description
+        values["description"] = _expand_short_service_description(
+            description,
+            state,
+        )
     elif state.service_description:
         values["description"] = state.service_description
 
@@ -509,14 +588,23 @@ def redact_sensitive_text(
 
 def sanitize_context(
     context: ContextEnvelope,
+    *,
+    verification_value: str | None = None,
 ) -> ContextEnvelope:
     """Remove sensitive operational values from LLM context."""
 
+    def sanitize(text: str) -> str:
+        redacted = redact_sensitive_text(text)
+        if verification_value:
+            redacted = redacted.replace(
+                verification_value,
+                "[VERIFICATION_REDACTED]",
+            )
+        return redacted
+
     current = context.current_message.model_copy(
         update={
-            "text": redact_sensitive_text(
-                context.current_message.text
-            )
+            "text": sanitize(context.current_message.text)
         }
     )
 
@@ -525,9 +613,7 @@ def sanitize_context(
             update={
                 "inbound": turn.inbound.model_copy(
                     update={
-                        "text": redact_sensitive_text(
-                            turn.inbound.text
-                        )
+                        "text": sanitize(turn.inbound.text)
                     }
                 )
             }
@@ -1098,22 +1184,45 @@ class HotelGuestProcessor:
             }
             and context.turns
         ):
-            previous = extract_parameters(
-                context.turns[-1].inbound.text,
-                ConversationState(
-                    language=state.language,
-                ),
-                idempotency_seed=str(
-                    context.turns[-1].inbound.id
-                ),
-            )
-            for name, value in previous.items():
-                if (
-                    name not in parameters
-                    or parameters[name] is None
-                    or parameters[name] == ""
+            for turn in reversed(context.turns):
+                previous = extract_parameters(
+                    turn.inbound.text,
+                    ConversationState(
+                        language=state.language,
+                    ),
+                    idempotency_seed=str(
+                        turn.inbound.id
+                    ),
+                )
+                for name in (
+                    "booking_reference",
+                    "tracking_code",
                 ):
-                    parameters[name] = value
+                    value = previous.get(name)
+                    if (
+                        value is not None
+                        and value != ""
+                        and (
+                            name not in parameters
+                            or parameters[name] is None
+                            or parameters[name] == ""
+                        )
+                    ):
+                        parameters[name] = value
+                if (
+                    parameters.get("booking_reference")
+                    or parameters.get("tracking_code")
+                ):
+                    break
+
+        verification_value = parameters.get(
+            "verification_value"
+        )
+        if isinstance(verification_value, str):
+            await self._conversations.redact_message(
+                message_id,
+                replacement="[redacted:verification]",
+            )
 
         if state.active_workflow is not None:
             routing = _forced_routing(
@@ -1170,7 +1279,17 @@ class HotelGuestProcessor:
         )
 
         result = await self._orchestrator.handle(
-            sanitize_context(context),
+            sanitize_context(
+                context,
+                verification_value=(
+                    verification_value
+                    if isinstance(
+                        verification_value,
+                        str,
+                    )
+                    else None
+                ),
+            ),
             routing,
             confirmed=confirmed,
             trusted_tool_arguments=_tool_arguments(

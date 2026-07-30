@@ -1,10 +1,13 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react'
-import { api } from '../lib/api'
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { api, setUnauthorizedHandler } from '../lib/api'
 import type { AdminPrincipal, LoginResponse } from '../types'
+
+export type AuthStatus = 'restoring' | 'authenticated' | 'anonymous'
 
 interface AuthValue {
   token: string | null
   admin: AdminPrincipal | null
+  status: AuthStatus
   login(identifier: string, password: string): Promise<void>
   logout(): void
 }
@@ -12,7 +15,7 @@ interface AuthValue {
 const AuthContext = createContext<AuthValue | null>(null)
 const SESSION_KEY = 'hotel-admin-session'
 
-interface StoredSession {
+export interface StoredSession {
   token: string
   admin: AdminPrincipal
 }
@@ -51,24 +54,72 @@ export function storeSession(session: StoredSession | null): void {
   }
 }
 
+export async function authenticate(identifier: string, password: string): Promise<StoredSession> {
+  const result = await api<LoginResponse>('/admin/auth/login', {
+    method: 'POST', body: { identifier, password },
+  })
+  return { token: result.access_token, admin: result.admin }
+}
+
+export async function restoreSession(session: StoredSession): Promise<StoredSession> {
+  const admin = await api<AdminPrincipal>('/admin/auth/me', { token: session.token })
+  return { token: session.token, admin }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<StoredSession | null>(readSession)
+  const [status, setStatus] = useState<AuthStatus>(
+    () => session ? 'restoring' : 'anonymous',
+  )
+
+  useEffect(() => {
+    let active = true
+    const stored = readSession()
+    if (!stored) {
+      setStatus('anonymous')
+      return () => { active = false }
+    }
+    void restoreSession(stored)
+      .then((restored) => {
+        if (!active) return
+        storeSession(restored)
+        setSession(restored)
+        setStatus('authenticated')
+      })
+      .catch(() => {
+        if (!active) return
+        storeSession(null)
+        setSession(null)
+        setStatus('anonymous')
+      })
+    return () => { active = false }
+  }, [])
+
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      storeSession(null)
+      setSession(null)
+      setStatus('anonymous')
+    })
+    return () => setUnauthorizedHandler(null)
+  }, [])
+
   const value = useMemo<AuthValue>(() => ({
     token: session?.token ?? null,
     admin: session?.admin ?? null,
+    status,
     async login(identifier, password) {
-      const result = await api<LoginResponse>('/admin/auth/login', {
-        method: 'POST', body: { identifier, password },
-      })
-      const next = { token: result.access_token, admin: result.admin }
+      const next = await authenticate(identifier, password)
       storeSession(next)
       setSession(next)
+      setStatus('authenticated')
     },
     logout() {
       storeSession(null)
       setSession(null)
+      setStatus('anonymous')
     },
-  }), [session])
+  }), [session, status])
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 

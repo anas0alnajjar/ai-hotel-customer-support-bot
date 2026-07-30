@@ -624,6 +624,9 @@ class HybridOrchestrator:
                 ),
                 "stay_too_long": ("مدة الإقامة تتجاوز الحد المسموح. ما تاريخ المغادرة الجديد؟"),
                 "adults_required": "يجب أن تضم الإقامة بالغاً واحداً على الأقل. كم عدد البالغين؟",
+                "booking_not_found_or_verification_failed": (
+                    "تعذر التحقق من الحجز. تأكد من رمز التحقق وحاول مرة أخرى."
+                ),
             },
             "en": {
                 "check_in_in_past": (
@@ -640,6 +643,9 @@ class HybridOrchestrator:
                     "The stay exceeds the allowed length. What is the new departure date?"
                 ),
                 "adults_required": ("At least one adult is required. How many adults will stay?"),
+                "booking_not_found_or_verification_failed": (
+                    "The booking could not be verified. Check the verification code and try again."
+                ),
             },
         }
         fallback = (

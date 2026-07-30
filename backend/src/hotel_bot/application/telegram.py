@@ -18,8 +18,8 @@ from hotel_bot.domain.telegram.models import (
     TelegramWebhookResult,
 )
 
-
 ARABIC_PATTERN = re.compile(r"[\u0600-\u06ff]")
+LATIN_PATTERN = re.compile(r"[A-Za-z]")
 
 
 class TelegramGuestProcessor(Protocol):
@@ -96,17 +96,19 @@ def _language(
         .split("-", maxsplit=1)[0]
     )
 
-    if primary in {
-        "ar",
-        "en",
-    }:
+    if text.lstrip().startswith("/") and primary in {"ar", "en"}:
         return primary
 
-    return (
-        "ar"
-        if ARABIC_PATTERN.search(text)
-        else "en"
-    )
+    if ARABIC_PATTERN.search(text):
+        return "ar"
+
+    if LATIN_PATTERN.search(text):
+        return "en"
+
+    if primary in {"ar", "en"}:
+        return primary
+
+    return "en"
 
 
 def _command(
@@ -210,7 +212,7 @@ def parse_telegram_callback(
             "SupportedLanguage",
             _language(
                 callback.sender.language_code,
-                callback_data,
+                "",
             ),
         ),
     )

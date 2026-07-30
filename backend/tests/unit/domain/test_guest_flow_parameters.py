@@ -83,6 +83,110 @@ def test_sensitive_booking_and_verification_values_never_enter_llm_context() -> 
     assert "BKG-2026-0001" not in redact_sensitive_text(message.text)
 
 
+def test_bare_booking_verification_is_current_workflow_only_and_redacted() -> None:
+    booking_state = ConversationState(
+        language="ar",
+        active_workflow=ActiveWorkflow.BOOKING_LOOKUP,
+    )
+
+    parameters = extract_parameters(
+        "0101",
+        booking_state,
+        idempotency_seed="booking-verification",
+    )
+    unrelated = extract_parameters(
+        "0101",
+        ConversationState(language="ar"),
+        idempotency_seed="unrelated-number",
+    )
+    message = MessageSnapshot(
+        id=uuid4(),
+        conversation_id=uuid4(),
+        sequence_number=1,
+        direction=MessageDirection.INBOUND,
+        text="0101",
+        language="ar",
+        correlation_id="bare-verification-redaction",
+        created_at=datetime(2026, 7, 30, 12, 0, 0),
+    )
+    context = ContextEnvelope(
+        state=booking_state,
+        current_message=message,
+        turns=(),
+        evidence=(),
+        summary=None,
+        estimated_tokens=1,
+        truncated=False,
+    )
+
+    sanitized = sanitize_context(
+        context,
+        verification_value="0101",
+    )
+
+    assert parameters["verification_value"] == "0101"
+    assert "verification_value" not in unrelated
+    assert "0101" not in sanitized.current_message.text
+    assert sanitized.current_message.text == "[VERIFICATION_REDACTED]"
+
+
+def test_room_service_extracts_natural_room_phrase_and_short_followups() -> None:
+    one_message = extract_parameters(
+        "أريد وجبة فطور لغرفتي 101",
+        ConversationState(language="ar"),
+        idempotency_seed="room-service-natural",
+    )
+    room_service_state = ConversationState(
+        language="ar",
+        room_number="101",
+        active_workflow=ActiveWorkflow.ROOM_SERVICE,
+    )
+
+    assert one_message["room_number"] == "101"
+    assert one_message["category"] == "food_and_beverage"
+    assert one_message["description"] == "أريد وجبة فطور لغرفتي"
+
+    for reply in (
+        "food",
+        "breakfast",
+        "lunch",
+        "dinner",
+        "drinks",
+        "water",
+        "coffee",
+        "wine",
+        "طعام",
+        "أكل",
+        "فطور",
+        "غداء",
+        "عشاء",
+        "مشروبات",
+        "ماء",
+        "قهوة",
+    ):
+        parameters = extract_parameters(
+            reply,
+            room_service_state,
+            idempotency_seed=f"short-{reply}",
+        )
+        assert parameters["category"] == "food_and_beverage"
+        assert len(str(parameters["description"])) >= 10
+
+
+def test_bare_room_number_does_not_become_service_description() -> None:
+    parameters = extract_parameters(
+        "101",
+        ConversationState(
+            language="ar",
+            active_workflow=ActiveWorkflow.ROOM_SERVICE,
+        ),
+        idempotency_seed="room-only",
+    )
+
+    assert parameters["room_number"] == "101"
+    assert "description" not in parameters
+
+
 def test_ac_maintenance_arguments_resolve_general_to_hvac() -> None:
     text = "المكيف في الغرفة 304 لا يعمل، أريد فتح طلب صيانة."
     parameters = extract_parameters(

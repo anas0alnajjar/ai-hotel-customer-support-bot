@@ -294,6 +294,30 @@ class SQLAlchemyConversationRepository:
         await self._session.flush()
         return self._map_conversation(row)
 
+    async def redact_message(
+        self,
+        message_id: UUID,
+        *,
+        replacement: str,
+        now: datetime,
+    ) -> MessageSnapshot:
+        row = await self._session.scalar(
+            select(Message)
+            .where(Message.id == message_id)
+            .with_for_update()
+            .limit(1)
+        )
+        if row is None:
+            raise ConversationError(
+                "message_not_found",
+                "message was not found",
+            )
+        row.text = replacement
+        row.redacted_at = now
+        row.retention_action = "verification_redacted"
+        await self._session.flush()
+        return self._map_message(row)
+
     async def redact_expired_messages(
         self,
         *,

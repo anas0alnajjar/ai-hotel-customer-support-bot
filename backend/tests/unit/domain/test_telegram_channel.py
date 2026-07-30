@@ -24,7 +24,6 @@ from hotel_bot.domain.telegram.models import (
 )
 from hotel_bot.infrastructure.telegram import TelegramBotAPIClient
 
-
 USER_ID = 123456789012
 CHAT_ID = 123456789012
 
@@ -169,6 +168,29 @@ def test_parser_falls_back_to_text_language_and_ignores_unsupported_updates() ->
     assert parse_telegram_update(
         update_payload(text=None)
     ) is None
+
+
+def test_parser_prefers_clear_message_script_over_telegram_profile_language() -> None:
+    english = parse_telegram_update(
+        update_payload(
+            text=(
+                "Does the hotel offer airport pick-up services from Damascus "
+                "International Airport, and how far in advance do I need to book?"
+            ),
+            language_code="ar",
+        )
+    )
+    arabic = parse_telegram_update(
+        update_payload(
+            text="هل تتوفر خدمة نقل من المطار؟",
+            language_code="en",
+        )
+    )
+
+    assert english is not None
+    assert english.language == "en"
+    assert arabic is not None
+    assert arabic.language == "ar"
 
 
 def test_callback_parser_accepts_private_inline_button() -> None:

@@ -4,11 +4,12 @@ import { useAuth } from '../auth/AuthContext'
 import { ApiError } from '../lib/api'
 
 export function LoginPage() {
-  const { admin, login } = useAuth()
+  const { admin, login, status } = useAuth()
   const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  if (status === 'restoring') return <main className="route-loading" aria-busy="true">Restoring secure session…</main>
   if (admin) return <Navigate to="/" replace />
   async function submit(event: FormEvent) {
     event.preventDefault(); setError(''); setBusy(true)
@@ -29,7 +30,7 @@ export function LoginPage() {
         <label>اسم المستخدم أو البريد الإلكتروني<input autoComplete="username" required minLength={3} value={identifier} onChange={event => setIdentifier(event.target.value)} /></label>
         <label>كلمة المرور<input type="password" autoComplete="current-password" required minLength={12} value={password} onChange={event => setPassword(event.target.value)} /></label>
         <button className="button full" disabled={busy}>{busy ? 'جارٍ التحقق…' : 'دخول آمن'}</button>
-        <p className="security-note">الجلسة قصيرة الأجل ولا تُحفظ في تخزين المتصفح.</p>
+        <p className="security-note">الجلسة قصيرة الأجل ومحفوظة ضمن تبويب المتصفح الحالي فقط.</p>
       </form>
     </section>
   </main>

@@ -6,6 +6,13 @@ export class ApiError extends Error {
 }
 
 type RequestOptions = Omit<RequestInit, 'body'> & { body?: unknown; token?: string | null }
+type UnauthorizedHandler = () => void
+
+let unauthorizedHandler: UnauthorizedHandler | null = null
+
+export function setUnauthorizedHandler(handler: UnauthorizedHandler | null): void {
+  unauthorizedHandler = handler
+}
 
 export async function api<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const headers = new Headers(options.headers)
@@ -23,6 +30,7 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
       const data = await response.json() as { detail?: string }
       if (typeof data.detail === 'string') code = data.detail
     } catch { /* retain controlled fallback */ }
+    if (response.status === 401 && options.token) unauthorizedHandler?.()
     throw new ApiError(response.status, code, response.headers.get('x-correlation-id'))
   }
   if (response.status === 204) return undefined as T

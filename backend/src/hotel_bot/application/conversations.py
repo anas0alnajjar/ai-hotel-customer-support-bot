@@ -89,6 +89,14 @@ class ConversationRepository(Protocol):
         self, conversation_id: UUID, state: ConversationState
     ) -> ConversationSnapshot: ...
 
+    async def redact_message(
+        self,
+        message_id: UUID,
+        *,
+        replacement: str,
+        now: datetime,
+    ) -> MessageSnapshot: ...
+
     async def redact_expired_messages(
         self,
         *,
@@ -296,6 +304,18 @@ class ConversationService:
         self, conversation_id: UUID, state: ConversationState
     ) -> ConversationSnapshot:
         return await self._repository.update_state(conversation_id, state)
+
+    async def redact_message(
+        self,
+        message_id: UUID,
+        *,
+        replacement: str,
+    ) -> MessageSnapshot:
+        return await self._repository.redact_message(
+            message_id,
+            replacement=_normalize_text(replacement),
+            now=self._clock(),
+        )
 
     @staticmethod
     def help_text(language: str) -> str:

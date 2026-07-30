@@ -89,8 +89,22 @@ ROOM_SERVICE_QUESTIONS = frozenset(
         "بدي خدمة الطعام الي الغرفة",
         "اريد خدمة الطعام الي الغرف",
         "اريد خدمة الطعام الي الغرفة",
+        "خدمة الغرف",
+        "خدمة الغرفة",
         "i need room service",
     }
+)
+AIRPORT_KNOWLEDGE_TERMS = (
+    ("airport", "transfer"),
+    ("airport", "pick-up"),
+    ("airport", "pick up"),
+    ("airport", "pickup"),
+    ("المطار", "نقل"),
+    ("المطار", "توصيل"),
+    ("المطار", "استقبال"),
+    ("مطار", "نقل"),
+    ("مطار", "توصيل"),
+    ("مطار", "استقبال"),
 )
 
 
@@ -149,7 +163,12 @@ class SafeIntentRouter:
             )
 
         alias_intent = (
-            IntentCode.ROOM_AVAILABILITY
+            IntentCode.HOTEL_INFO
+            if any(
+                all(term in normalized for term in terms)
+                for terms in AIRPORT_KNOWLEDGE_TERMS
+            )
+            else IntentCode.ROOM_AVAILABILITY
             if normalized in AVAILABILITY_QUESTIONS
             else IntentCode.BOOKING_LOOKUP
             if normalized in BOOKING_LOOKUP_QUESTIONS
