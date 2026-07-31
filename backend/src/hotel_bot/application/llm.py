@@ -1,5 +1,7 @@
 """Audited LLM execution and safe hybrid orchestration."""
 
+import asyncio
+import re
 from collections.abc import Mapping
 from time import perf_counter
 from typing import Protocol
@@ -13,7 +15,9 @@ from hotel_bot.application.tools import ControlledToolExecutor
 from hotel_bot.domain.conversation.models import ContextEnvelope
 from hotel_bot.domain.intent.enums import IntentCode, RoutingDecision
 from hotel_bot.domain.intent.models import RoutingResult
+from hotel_bot.domain.intent.normalization import normalize_text
 from hotel_bot.domain.intent.taxonomy import INTENT_DEFINITIONS
+from hotel_bot.domain.knowledge.models import RetrievalEvidence, RetrievalResult
 from hotel_bot.domain.llm.enums import AnswerBasis, LLMRunStatus
 from hotel_bot.domain.llm.errors import (
     LLMAuditError,
@@ -102,11 +106,31 @@ class AuditedLLMService:
         message_id: UUID,
         request: LLMRequest,
         budget: TurnBudget,
+        timeout_seconds: float | None = None,
     ) -> LLMResponse:
         budget.reserve(request)
         started = perf_counter()
         try:
-            response = await self._provider.generate(request)
+            if timeout_seconds is None:
+                response = await self._provider.generate(request)
+            else:
+                async with asyncio.timeout(timeout_seconds):
+                    response = await self._provider.generate(request)
+        except TimeoutError as exc:
+            await self._record(
+                LLMRunRecord(
+                    message_id=message_id,
+                    provider=self._provider.provider_name,
+                    model=self._provider.model_name,
+                    prompt_version=PROMPT_VERSION,
+                    request_kind=request.kind,
+                    usage=None,
+                    latency_ms=max(0, int((perf_counter() - started) * 1000)),
+                    status=LLMRunStatus.TIMED_OUT,
+                    error_code=LLMTimeoutError.code,
+                )
+            )
+            raise LLMTimeoutError("LLM request exceeded the application timeout") from exc
         except LLMError as exc:
             await self._record(
                 LLMRunRecord(
@@ -159,6 +183,23 @@ ACTION_TOOL_BY_INTENT: dict[IntentCode, str] = {
     IntentCode.SERVICE_REQUEST_STATUS: "get_service_request_status",
 }
 KNOWLEDGE_QUERY_REWRITE_TRIGGER_SCORE = 0.55
+KNOWLEDGE_STRONG_SEMANTIC_SCORE = KNOWLEDGE_QUERY_REWRITE_TRIGGER_SCORE
+GENERIC_RETRIEVAL_TERMS = frozenset(
+    {
+        "hotel",
+        "guest",
+        "guests",
+        "information",
+        "service",
+        "فندق",
+        "الفندق",
+        "نزيل",
+        "النزيل",
+        "النزلاء",
+        "معلومات",
+        "خدمة",
+    }
+)
 
 PARAMETER_LABELS = {
     "ar": {
@@ -306,6 +347,73 @@ INTENT_PARAMETER_QUESTIONS = {
 }
 
 
+def _meaningful_retrieval_tokens(text: str) -> frozenset[str]:
+    return frozenset(
+        token
+        for token in re.findall(r"[\w\u0600-\u06ff]+", normalize_text(text))
+        if len(token) >= 3 and token not in GENERIC_RETRIEVAL_TERMS
+    )
+
+
+def _validate_retrieval_evidence(
+    result: RetrievalResult,
+    *,
+    query: str,
+    material_conditions: tuple[str, ...],
+) -> RetrievalResult:
+    """Reject weak unrelated chunks and rank candidates by generic condition coverage."""
+
+    query_tokens = _meaningful_retrieval_tokens(query)
+    condition_tokens = tuple(
+        _meaningful_retrieval_tokens(condition)
+        for condition in material_conditions
+    )
+    ranked: list[tuple[int, int, float, RetrievalEvidence]] = []
+    for evidence in result.evidence:
+        evidence_tokens = _meaningful_retrieval_tokens(
+            f"{evidence.title}\n{evidence.text}"
+        )
+        lexical_overlap = len(query_tokens & evidence_tokens)
+        condition_coverage = sum(
+            bool(tokens & evidence_tokens)
+            for tokens in condition_tokens
+            if tokens
+        )
+        if (
+            evidence.score < KNOWLEDGE_STRONG_SEMANTIC_SCORE
+            and lexical_overlap == 0
+            and condition_coverage == 0
+        ):
+            continue
+        ranked.append(
+            (
+                condition_coverage,
+                lexical_overlap,
+                evidence.score,
+                evidence,
+            )
+        )
+    ranked.sort(
+        key=lambda item: (item[0], item[1], item[2]),
+        reverse=True,
+    )
+    validated_evidence = tuple(
+        item[3].model_copy(update={"rank": rank})
+        for rank, item in enumerate(ranked, start=1)
+    )
+    return result.model_copy(
+        update={
+            "evidence": validated_evidence,
+            "sufficient": bool(validated_evidence),
+            "reason_code": (
+                "evidence_found"
+                if validated_evidence
+                else "evidence_relevance_rejected"
+            ),
+        }
+    )
+
+
 class HybridOrchestrator:
     """Routes deterministic, RAG, and tool flows while keeping Gemini non-authoritative."""
 
@@ -347,7 +455,7 @@ class HybridOrchestrator:
             output_usd_per_million=self._output_usd_per_million,
         )
         if routing.decision is RoutingDecision.KNOWLEDGE_CANDIDATE:
-            return await self._knowledge(context, budget)
+            return await self._knowledge(context, routing, budget)
         if routing.decision is RoutingDecision.ACTION_CANDIDATE:
             return await self._action(
                 context,
@@ -358,13 +466,32 @@ class HybridOrchestrator:
             )
         return self._controlled(context, routing)
 
-    async def _knowledge(self, context: ContextEnvelope, budget: TurnBudget) -> OrchestrationResult:
+    async def _knowledge(
+        self,
+        context: ContextEnvelope,
+        routing: RoutingResult,
+        budget: TurnBudget,
+    ) -> OrchestrationResult:
+        search_query = (
+            "\n".join(
+                (
+                    routing.normalized_knowledge_query,
+                    *routing.material_conditions,
+                )
+            )
+            if routing.normalized_knowledge_query
+            else context.current_message.text
+        )
+        material_conditions = routing.material_conditions
         try:
-            result = await self._retrieval.retrieve(context.current_message.text)
+            result = await self._retrieval.retrieve(search_query)
         except Exception:
             return self._unavailable(context, "knowledge_retrieval_failed")
         strongest_score = result.evidence[0].score if result.evidence else -1.0
-        if strongest_score < KNOWLEDGE_QUERY_REWRITE_TRIGGER_SCORE:
+        if (
+            routing.normalized_knowledge_query is None
+            and strongest_score < KNOWLEDGE_QUERY_REWRITE_TRIGGER_SCORE
+        ):
             try:
                 rewrite_response = await self._llm.generate(
                     message_id=context.current_message.id,
@@ -391,8 +518,15 @@ class HybridOrchestrator:
                 )
                 if rewritten_result.sufficient:
                     result = rewritten_result
+                    search_query = semantic_query
+                    material_conditions = rewritten.material_conditions
             except (LLMError, ValidationError, ValueError):
                 pass
+        result = _validate_retrieval_evidence(
+            result,
+            query=search_query,
+            material_conditions=material_conditions,
+        )
         if not result.sufficient:
             return self._unavailable(context, result.reason_code)
         evidence_ids = tuple(str(item.chunk_id) for item in result.evidence)
@@ -566,35 +700,43 @@ class HybridOrchestrator:
     def _controlled(self, context: ContextEnvelope, routing: RoutingResult) -> OrchestrationResult:
         language = context.state.language
         if routing.decision is RoutingDecision.CLARIFY:
-            labels = PARAMETER_LABELS[language]
-            all_missing_parameters = (
-                routing.missing_parameters
-                or INTENT_DEFINITIONS[routing.prediction.intent].required_parameters
-            )
-            missing_parameters = all_missing_parameters[:1]
-            if missing_parameters:
-                text = INTENT_PARAMETER_QUESTIONS[language].get(
-                    routing.prediction.intent,
-                    {},
-                ).get(
-                    missing_parameters[0]
-                )
-                if text is None:
-                    text = CLARIFICATION_QUESTIONS[language].get(
-                        missing_parameters
-                    )
-                if text is None:
-                    missing = labels.get(
-                        missing_parameters[0],
-                        missing_parameters[0],
-                    )
-                    text = f"ما {missing}؟" if language == "ar" else f"Please provide {missing}."
+            if routing.clarification_question is not None:
+                text = routing.clarification_question
             else:
-                text = (
-                    "هل يمكنك توضيح طلبك بمزيد من التفاصيل؟"
-                    if language == "ar"
-                    else "Could you clarify your request with a few more details?"
+                labels = PARAMETER_LABELS[language]
+                all_missing_parameters = (
+                    routing.missing_parameters
+                    or INTENT_DEFINITIONS[routing.prediction.intent].required_parameters
                 )
+                missing_parameters = all_missing_parameters[:1]
+                if missing_parameters:
+                    candidate_text = INTENT_PARAMETER_QUESTIONS[language].get(
+                        routing.prediction.intent,
+                        {},
+                    ).get(
+                        missing_parameters[0]
+                    )
+                    if candidate_text is None:
+                        candidate_text = CLARIFICATION_QUESTIONS[language].get(
+                            missing_parameters
+                        )
+                    if candidate_text is None:
+                        missing = labels.get(
+                            missing_parameters[0],
+                            missing_parameters[0],
+                        )
+                        candidate_text = (
+                            f"ما {missing}؟"
+                            if language == "ar"
+                            else f"Please provide {missing}."
+                        )
+                    text = candidate_text
+                else:
+                    text = (
+                        "هل يمكنك توضيح طلبك بمزيد من التفاصيل؟"
+                        if language == "ar"
+                        else "Could you clarify your request with a few more details?"
+                    )
             reason = "clarification_required"
         elif routing.decision is RoutingDecision.ESCALATE:
             text = (

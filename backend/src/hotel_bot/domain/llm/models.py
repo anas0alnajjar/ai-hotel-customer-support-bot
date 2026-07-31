@@ -1,14 +1,31 @@
 """Immutable provider-neutral model requests, responses, and audit records."""
 
 from collections.abc import Mapping
+from datetime import date
 from typing import Any, Literal, Self
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from hotel_bot.domain.intent.enums import IntentCode
+from hotel_bot.domain.intent.taxonomy import ACTION_INTENTS
 from hotel_bot.domain.llm.enums import AnswerBasis, LLMRequestKind, LLMRunStatus
 
 SupportedLanguage = Literal["ar", "en"]
+HybridRouteMode = Literal["action", "knowledge", "ambiguous", "unsupported"]
+HybridMissingField = Literal[
+    "check_in",
+    "check_out",
+    "adults",
+    "children",
+    "room_type_code",
+    "booking_reference",
+    "verification_value",
+    "room_number",
+    "category",
+    "description",
+    "tracking_code",
+]
 
 
 class LLMUsage(BaseModel):
@@ -85,6 +102,77 @@ class KnowledgeSearchQuery(BaseModel):
         min_length=1,
         max_length=12,
     )
+
+
+class HybridIntentEntities(BaseModel):
+    """Allow-listed, non-sensitive values the advisory analyzer may extract."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    room_number: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=16,
+        pattern=r"^[A-Za-z0-9-]+$",
+    )
+    check_in: date | None = None
+    check_out: date | None = None
+    adults: int | None = Field(default=None, ge=1, le=20)
+    children: int | None = Field(default=None, ge=0, le=20)
+    room_type_code: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=32,
+        pattern=r"^[A-Za-z0-9_-]+$",
+    )
+    category: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=64,
+        pattern=r"^[a-z][a-z0-9_]*$",
+    )
+    service_description: str | None = Field(default=None, min_length=2, max_length=1000)
+
+
+class HybridIntentDecision(BaseModel):
+    """Strict advisory intent contract; it contains no tool or authorization fields."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    mode: HybridRouteMode
+    intent: IntentCode | None = None
+    confidence: float = Field(ge=0, le=1)
+    language: SupportedLanguage
+    entities: HybridIntentEntities = Field(default_factory=HybridIntentEntities)
+    missing_fields: tuple[HybridMissingField, ...] = Field(default=(), max_length=12)
+    needs_clarification: bool = False
+    clarification_question: str | None = Field(default=None, min_length=2, max_length=500)
+    normalized_knowledge_query: str | None = Field(default=None, min_length=2, max_length=1000)
+    material_conditions: tuple[str, ...] = Field(default=(), max_length=12)
+
+    @model_validator(mode="after")
+    def validate_advisory_policy(self) -> Self:
+        if self.mode == "action":
+            if self.intent not in ACTION_INTENTS:
+                raise ValueError("action mode requires an existing action intent")
+            if self.needs_clarification and self.clarification_question is None:
+                raise ValueError("clarification text is required when clarification is requested")
+        elif self.mode == "knowledge":
+            if self.intent not in {None, IntentCode.HOTEL_INFO}:
+                raise ValueError("knowledge mode may select only hotel_info")
+            if self.needs_clarification:
+                raise ValueError("knowledge mode cannot request clarification")
+        elif self.mode == "ambiguous":
+            if self.intent is not None:
+                raise ValueError("ambiguous mode cannot select an intent")
+            if not self.needs_clarification or self.clarification_question is None:
+                raise ValueError("ambiguous mode requires a focused clarification")
+        else:
+            if self.intent not in {None, IntentCode.UNSUPPORTED}:
+                raise ValueError("unsupported mode cannot select an executable intent")
+            if self.needs_clarification:
+                raise ValueError("unsupported mode cannot request clarification")
+        return self
 
 
 class LLMRunRecord(BaseModel):

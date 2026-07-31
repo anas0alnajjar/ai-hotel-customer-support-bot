@@ -34,3 +34,4 @@ class RoutingDecision(StrEnum):
 class PredictionSource(StrEnum):
     RULE = "rule"
     CLASSIFIER = "classifier"
+    HYBRID_LLM = "hybrid_llm"

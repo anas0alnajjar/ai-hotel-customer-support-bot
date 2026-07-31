@@ -55,6 +55,9 @@ class RoutingResult(BaseModel):
     requires_confirmation: bool = False
     allow_tool_execution: bool = False
     reason_code: str
+    clarification_question: str | None = Field(default=None, min_length=2, max_length=500)
+    normalized_knowledge_query: str | None = Field(default=None, min_length=2, max_length=1000)
+    material_conditions: tuple[str, ...] = Field(default=(), max_length=12)
 
 
 class IntentMetric(BaseModel):

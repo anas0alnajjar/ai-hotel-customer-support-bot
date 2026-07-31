@@ -8,7 +8,10 @@ from hotel_bot.application.conversations import ConversationService
 from hotel_bot.application.guest_flows import HotelGuestProcessor
 from hotel_bot.application.hotel_operations import HotelOperationsService
 from hotel_bot.application.hotel_tools import build_hotel_tool_registry
-from hotel_bot.application.intent_routing import IntentRoutingService
+from hotel_bot.application.intent_routing import (
+    HybridIntentRoutingService,
+    IntentRoutingService,
+)
 from hotel_bot.application.knowledge import KnowledgeRetrievalService
 from hotel_bot.application.llm import AuditedLLMService, HybridOrchestrator
 from hotel_bot.application.prompts import PromptFactory
@@ -158,12 +161,15 @@ class TelegramApplicationRuntime:
             minimum_score=self._settings.retrieval_min_score,
         )
         llm = AuditedLLMService(self._gemini, SQLAlchemyLLMRunRepository(session))
+        prompt_factory = PromptFactory(
+            max_output_tokens=self._settings.gemini_max_output_tokens
+        )
         orchestrator = HybridOrchestrator(
             llm=llm,
             retrieval=retrieval,
             registry=registry,
             tool_executor=executor,
-            prompt_factory=PromptFactory(max_output_tokens=self._settings.gemini_max_output_tokens),
+            prompt_factory=prompt_factory,
             max_tokens_per_turn=self._settings.gemini_max_tokens_per_turn,
             max_cost_usd_per_turn=self._settings.gemini_max_estimated_cost_usd_per_turn,
             input_usd_per_million=self._settings.gemini_input_usd_per_million_tokens,
@@ -174,6 +180,26 @@ class TelegramApplicationRuntime:
             intents=intents,
             orchestrator=orchestrator,
             identity_pepper=self._identity_pepper,
+            hybrid_router=HybridIntentRoutingService(
+                llm=llm,
+                prompt_factory=prompt_factory,
+                enabled=self._settings.hybrid_llm_router_enabled,
+                confidence_threshold=(
+                    self._settings.hybrid_llm_router_confidence_threshold
+                ),
+                margin_threshold=self._settings.intent_confidence_margin_threshold,
+                timeout_seconds=self._settings.hybrid_llm_router_timeout_seconds,
+                max_tokens_per_turn=self._settings.gemini_max_tokens_per_turn,
+                max_cost_usd_per_turn=(
+                    self._settings.gemini_max_estimated_cost_usd_per_turn
+                ),
+                input_usd_per_million=(
+                    self._settings.gemini_input_usd_per_million_tokens
+                ),
+                output_usd_per_million=(
+                    self._settings.gemini_output_usd_per_million_tokens
+                ),
+            ),
         )
         return await TelegramWebhookCoordinator(processor, self._telegram).handle(
             update,

@@ -415,11 +415,7 @@ class SafeIntentRouter:
             return RoutingResult(
                 prediction=prediction,
                 decision=RoutingDecision.KNOWLEDGE_CANDIDATE,
-                reason_code=(
-                    "informational_or_ambiguous_knowledge_candidate"
-                    if substantive_question
-                    else "classified_knowledge_candidate"
-                ),
+                reason_code="classified_knowledge_candidate",
             )
 
         if missing:

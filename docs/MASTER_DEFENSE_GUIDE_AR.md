@@ -28,6 +28,8 @@
 - طلب تشغيلي صريح يجب تمريره إلى أداة مضبوطة.
 - تحية أو طلب ناقص أو حالة تتطلب توضيحاً أو تصعيداً.
 
+بعد المسارات الحتمية الآمنة والمصنف الحالي، يطبق النظام بوابة ثقة وتعارض. لا يستدعي محلل Gemini القصدي للرسائل الواضحة، بل للحالات منخفضة الثقة أو صغيرة الهامش أو العامية أو المتعارضة بين معلومة وفعل. يعيد المحلل قراراً منظماً فقط؛ ثم تتحقق طبقة Python من النية والخانات والحالة والسياسة قبل اختيار RAG أو أداة أو سؤال توضيح. الصياغة الدفاعية الدقيقة هي: **«يساعد LLM في الفهم الدلالي للنية والسياق في الحالات غير المؤكدة أو العامية، بينما يبقى التحقق الحتمي مسؤولاً عن الصلاحيات وحالة سير العمل والتحقق من المعاملات وتنفيذ الأدوات.»**
+
 في مسار المعرفة، لا يطلب النظام من Gemini اختراع جواب. يبحث أولاً في مستندات معتمدة ومفهرسة داخل FAISS باستخدام تضمينات دلالية (Embeddings) من نموذج Sentence Transformer متعدد اللغات. إذا كانت المطابقة الأولية ضعيفة، توجد آلية إعادة صياغة دلالية للسؤال بواسطة Gemini، ثم يُعاد البحث. عند وجود دليل كافٍ، يُطلب من Gemini صياغة جواب منظّم ومؤسس على معرّفات الأدلة المسموح بها فقط. إذا فشل Gemini بعد نجاح الاسترجاع، يعرض النظام fallback مضبوطاً من الدليل المختار ولا ينسب معلومة إلى مستند ضعيف سابق. هذا السلوك موجود في `HybridOrchestrator._knowledge` داخل [`backend/src/hotel_bot/application/llm.py`](../backend/src/hotel_bot/application/llm.py).
 
 في مسار العمليات، لا يكتب Gemini مباشرةً في MySQL. يختار الراوتر نية تشغيلية، وتستخرج طبقة التطبيق المعاملات الموثوقة، ثم يمر الطلب إلى سجل مغلق من ست أدوات ذات مخططات Pydantic صارمة. تتولى طبقة `ControlledToolExecutor` التحقق من اسم الأداة، ودور المستدعي، وعدد الاستدعاءات، والمعاملات، والتأكيد في العمليات الكتابية، والمهلة الزمنية، ثم تسجل نتيجة منزوعة الحساسية. الأدوات الفعلية هي: عرض أنواع الغرف، وفحص التوفر، والتحقق من حجز، وإنشاء طلب خدمة غرف، وإنشاء طلب صيانة، وتتبع طلب خدمة. راجع [`backend/src/hotel_bot/application/hotel_tools.py`](../backend/src/hotel_bot/application/hotel_tools.py) و[`backend/src/hotel_bot/application/tools.py`](../backend/src/hotel_bot/application/tools.py).
@@ -76,7 +78,7 @@
 
 1. استقبال تحديثات Telegram الخاصة والتحقق منها.
 2. تصنيف عشر نوايا عربية وإنكليزية باستخدام baseline قابل لإعادة الإنتاج.
-3. التفريق العام بين طلب تنفيذ صريح وسؤال معلوماتي.
+3. التفريق العام بين طلب تنفيذ صريح وسؤال معلوماتي عبر fast paths ومصنف وبوابة ثقة ومحلل دلالي استشاري عند الحاجة فقط.
 4. حفظ حالة محادثة منظمة وجمع المعاملات على عدة رسائل.
 5. إدارة دورة حياة مستندات المعرفة: مسودة، نسخة، اعتماد، أرشفة، وإعادة فهرسة.
 6. بناء فهرس FAISS غير قابل للتعديل لكل إصدار، مع manifest وchecksum.
@@ -176,9 +178,12 @@ flowchart TD
     W --> V["التحقق من السر والحجم والصيغة"]
     V --> C["Conversation Service<br/>هوية مستعارة + MySQL"]
     C --> L["معالجة اللغة"]
-    L --> I["IntentRoutingService<br/>Classifier + Safe Rules"]
-    I --> S["Conversation State<br/>workflow والمعاملات"]
-    S --> D{"معلومة أم عملية؟"}
+    L --> S["Sanitized Context + Conversation State"]
+    S --> I["Deterministic Fast Paths<br/>+ Existing Classifier"]
+    I --> G{"Confidence / Conflict Gate"}
+    G -->|واضح| D{"Authoritative Policy<br/>معلومة أم عملية؟"}
+    G -->|غير مؤكد/عامي/متعارض| AI["Gemini Structured Intent Analysis<br/>advisory only"]
+    AI --> D
     D -->|سؤال معلوماتي| R["KnowledgeRetrievalService"]
     R --> E["Sentence Transformer Embeddings"]
     E --> F["FAISS Vector Index<br/>قطع معتمدة فقط"]
@@ -208,11 +213,11 @@ flowchart TD
 1. **Telegram Webhook:** مسار `POST /api/v1/telegram/webhook` يتحقق من `X-Telegram-Bot-Api-Secret-Token` بمقارنة constant-time، ومن `Content-Type` والحجم وPydantic schema. المصدر: [`backend/src/hotel_bot/api/routes/telegram.py`](../backend/src/hotel_bot/api/routes/telegram.py).
 2. **FastAPI:** ينشئ `DatabaseManager` و`AdminApplicationRuntime` و`TelegramApplicationRuntime` في lifespan، ويضيف trusted hosts وsecurity headers وcorrelation وobservability. المصدر: [`backend/src/hotel_bot/main.py`](../backend/src/hotel_bot/main.py).
 3. **اللغة:** parser يفضل نصاً عربياً أو لاتينياً واضحاً، ويدعم `/ar` و`/en`. تحفظ اللغة المفضلة مع الضيف والمحادثة. المصدر: [`backend/src/hotel_bot/application/telegram.py`](../backend/src/hotel_bot/application/telegram.py) و[`backend/src/hotel_bot/infrastructure/repositories/conversations.py`](../backend/src/hotel_bot/infrastructure/repositories/conversations.py).
-4. **Intent Routing:** مصنف Naive Bayes مدرب على dataset ثنائي اللغة، تحيط به قواعد أمان وتمييز action-vs-information. المصدر: [`backend/src/hotel_bot/domain/intent/classifier.py`](../backend/src/hotel_bot/domain/intent/classifier.py) و[`backend/src/hotel_bot/domain/intent/routing.py`](../backend/src/hotel_bot/domain/intent/routing.py).
+4. **Intent Routing:** مصنف Naive Bayes مدرب على dataset ثنائي اللغة، تحيط به fast paths وقواعد أمان وتمييز action-vs-information، ثم `HybridIntentRoutingService` ذات بوابة ثقة وتعارض تستشير Gemini عند الحاجة فقط. القرار المنظم استشاري، وتبقى طبقة التطبيق authoritative. المصدر: [`backend/src/hotel_bot/domain/intent/classifier.py`](../backend/src/hotel_bot/domain/intent/classifier.py)، [`backend/src/hotel_bot/domain/intent/routing.py`](../backend/src/hotel_bot/domain/intent/routing.py)، و[`backend/src/hotel_bot/application/intent_routing.py`](../backend/src/hotel_bot/application/intent_routing.py).
 5. **Conversation State:** Pydantic model محدود الحقول يخزن التواريخ والعدد والغرفة والفئة والـworkflow، ولا يخزن رمز التحقق. المصدر: [`backend/src/hotel_bot/domain/conversation/models.py`](../backend/src/hotel_bot/domain/conversation/models.py).
 6. **RAG:** المستندات المعتمدة تُجزأ وتُضمن وتُفهرس، ثم يعاد تكوين الأدلة من metadata في MySQL. المصدر: [`backend/src/hotel_bot/application/knowledge.py`](../backend/src/hotel_bot/application/knowledge.py).
 7. **FAISS:** يستخدم `IndexFlatIP` بعد L2 normalization، أي تشابه cosine فعلياً، مع manifest وchecksum. المصدر: [`backend/src/hotel_bot/infrastructure/faiss_store.py`](../backend/src/hotel_bot/infrastructure/faiss_store.py).
-8. **Gemini:** adapter يوقف automatic function calling ويطلب JSON schema عند الحاجة. المصدر: [`backend/src/hotel_bot/infrastructure/gemini.py`](../backend/src/hotel_bot/infrastructure/gemini.py).
+8. **Gemini:** adapter يوقف automatic function calling ويطلب JSON schema عند الحاجة. يستخدم للتحليل القصدي المقيد، وإعادة صياغة البحث عند غياب query من المحلل، وصياغة الجواب، ولا يملك صلاحية تنفيذ أداة. المصدر: [`backend/src/hotel_bot/infrastructure/gemini.py`](../backend/src/hotel_bot/infrastructure/gemini.py).
 9. **الأدوات:** سجل مغلق من ست أدوات، والتحقق والتنفيذ خارج LLM. المصدر: [`backend/src/hotel_bot/application/hotel_tools.py`](../backend/src/hotel_bot/application/hotel_tools.py).
 10. **MySQL:** 19 جدولاً رئيسياً حسب SQLAlchemy metadata، مع Alembic وترابطات وقيود. المصدر: [`backend/src/hotel_bot/persistence/models.py`](../backend/src/hotel_bot/persistence/models.py).
 11. **React Admin:** مسارات محمية ودور لكل شاشة، وجلسة مخزنة في `sessionStorage` وتُعاد مصادقتها من الخادم بعد refresh. المصدر: [`frontend/src/App.tsx`](../frontend/src/App.tsx) و[`frontend/src/auth/AuthContext.tsx`](../frontend/src/auth/AuthContext.tsx).
@@ -226,15 +231,18 @@ flowchart TD
 4. **تعريف الضيف والمحادثة:** `telegram_identity_hash` ينشئ HMAC-SHA256 من user ID وpepper. `ConversationService.record_inbound` يحجز `channel_updates` لمنع التكرار ثم يجد محادثة مفتوحة حديثة أو ينشئ واحدة.
 5. **تجميع السياق:** `assemble_context` يحتفظ بالحالة والرسالة الحالية ثم الأدلة والملخص وآخر خمس دورات مكتملة ضمن token budget. الرسائل المنقحة والدورات الناقصة لا تدخل.
 6. **استخراج المعاملات:** `extract_parameters` يقرأ تواريخ ISO، وعدد البالغين/الأطفال، ومرجع الحجز، ورمز التتبع، ورقم الغرفة، وقيمة التحقق، والفئة والوصف والاستعجال.
-7. **حماية السر:** إذا وُجد رمز تحقق، تُنقح الرسالة المخزنة إلى `[redacted:verification]`. وقبل LLM، تحذف `sanitize_context` مراجع الحجز والتتبع والتحقق ورقم الغرفة من الحالة.
-8. **توجيه النية:** خارج workflow نشط يستدعي `IntentRoutingService.classify_message`. داخل workflow يستعمل `_forced_routing` النية الحالية لاستكمال معاملاتها، فلا يعيد المصنف بدء عملية مختلفة عرضياً.
-9. **قرار RAG أو Tool:** `HybridOrchestrator.handle` يرسل `KNOWLEDGE_CANDIDATE` إلى `_knowledge` و`ACTION_CANDIDATE` إلى `_action`. حالات clarification/escalation/greeting تعالج بنص مضبوط.
-10. **RAG:** الاستعلام يضمّن، وFAISS يرجع المرشحين، وتُقبل النتائج فوق `RETRIEVAL_MIN_SCORE=0.35` افتراضياً. إذا كان أقوى score أقل من `0.55`، قد تُطلب إعادة صياغة دلالية واحدة ثم يعاد البحث.
-11. **Tool Calling:** يُحدد اسم الأداة من النية، وتُمرر معاملات allow-listed مستخرجة محلياً، وتتحقق Pydantic/domain policies والتأكيد قبل التنفيذ.
-12. **صياغة الجواب:** Gemini يرجع `GroundedAnswer`؛ التطبيق يعيد التحقق من basis ومعرفات الدليل أو أسماء الأدوات. عند فشله، يوجد fallback من دليل الاسترجاع النهائي أو نتيجة الأداة المتحققة.
-13. **تحديث الحالة:** عند نجاح أداة تُغلق العملية النشطة. في خطأ تواريخ التوفر تمسح الخانات الخاطئة فقط للمحاولة التالية. خدمة الغرف والصيانة تمسح حقولها بعد النجاح أو الإلغاء.
-14. **التسجيل:** تحفظ الرسالة، وintent/confidence/classifier version، وLLM run، وtool execution، وcorrelation ID في MySQL.
-15. **الإرسال:** يسجل الرد outbound ثم يرسله `TelegramBotAPIClient`. إذا تجاوز 4096 حرفاً أو فشل التسليم، يُعاد خطأ يسمح لـTelegram بإعادة المحاولة.
+7. **حماية السر:** إذا وُجد رمز تحقق، تُنقح الرسالة المخزنة إلى `[redacted:verification]`. وقبل أي LLM، تنقح `sanitize_context` الرسالة والملخص والدورات الواردة والصادرة، ولا يحمل محلل النية سوى markers مثل `BOOKING_REFERENCE_PRESENT` و`VERIFICATION_VALUE_REDACTED`.
+8. **المسارات السريعة:** الأوامر والأزرار، والرد القصير المتوقع في workflow، ومرجع `BKG` أو `SR` المنظم، وطلب التوفر الكامل، والتحية/السلامة الواضحة لا تستدعي محلل النية.
+9. **المصنف والبوابة:** يستدعي `IntentRoutingService` المصنف الحالي، ثم تفحص `HybridIntentRoutingService` الثقة والهامش وتعارض الفعل/المعلومة والعامية والغموض وتغير الموضوع أثناء workflow.
+10. **التحليل الاختياري:** عند تحقق البوابة فقط، يعيد Gemini عقد `HybridIntentDecision` منظماً. الحد الأقصى محاولة تحليل واحدة لكل message ID مع timeout وذاكرة مؤقتة آمنة لا تحتوي قيماً حساسة. الإخفاق ينتج سؤال توضيح مضبوطاً ولا يخمن أداة.
+11. **القرار authoritative:** تتحقق Python من intent المسموح والخانات والحالة والتأكيد والسياسات. لا يقبل التطبيق اسم أداة من المحلل؛ بل يشتق الأداة لاحقاً من النية المعتمدة.
+12. **قرار RAG أو Tool:** `HybridOrchestrator.handle` يرسل `KNOWLEDGE_CANDIDATE` إلى `_knowledge` و`ACTION_CANDIDATE` إلى `_action`. حالات clarification/escalation/greeting تعالج بنص مضبوط.
+13. **RAG:** الاستعلام يضمّن، وFAISS يرجع عدة مرشحين، ثم يطبق تحقق صلة عام يجمع score والتداخل الدلالي/اللفظي وتغطية الشروط. إذا قدم المحلل query صالحاً يعاد استخدامه بلا نداء rewrite؛ وإلا قد تحصل إعادة صياغة واحدة عندما يكون أقوى score أقل من `0.55`.
+14. **Tool Calling:** يُحدد اسم الأداة حتمياً من النية، وتُمرر معاملات allow-listed مستخرجة محلياً، وتتحقق Pydantic/domain policies والتأكيد قبل التنفيذ.
+15. **صياغة الجواب:** Gemini يرجع `GroundedAnswer`؛ التطبيق يعيد التحقق من basis ومعرفات الدليل أو أسماء الأدوات. عند فشله، يوجد fallback من نفس مجموعة الأدلة النهائية المتحققة أو نتيجة الأداة المتحققة.
+16. **تحديث الحالة:** عند نجاح أداة تُغلق العملية النشطة. في خطأ تواريخ التوفر تمسح الخانات الخاطئة فقط للمحاولة التالية. خدمة الغرف والصيانة تمسح حقولها بعد النجاح أو الإلغاء.
+17. **التسجيل:** تحفظ الرسالة، وintent/confidence/classifier version، وLLM run، وtool execution، وcorrelation ID في MySQL، وتكتب طبقة hybrid metadata آمنة عن المصدر والقرار وسبب fallback دون النص أو الأسرار.
+18. **الإرسال:** يسجل الرد outbound ثم يرسله `TelegramBotAPIClient`. إذا تجاوز 4096 حرفاً أو فشل التسليم، يُعاد خطأ يسمح لـTelegram بإعادة المحاولة.
 
 المسار الجامع هو `HotelGuestProcessor._process_message` و`_respond_to_guest` في [`backend/src/hotel_bot/application/guest_flows.py`](../backend/src/hotel_bot/application/guest_flows.py)، وتركيبه الفعلي في `TelegramApplicationRuntime.handle` داخل [`backend/src/hotel_bot/infrastructure/telegram_runtime.py`](../backend/src/hotel_bot/infrastructure/telegram_runtime.py).
 
@@ -305,13 +313,30 @@ flowchart TD
 
 ## 10.5 أولوية workflow النشط
 
-عندما يكون `active_workflow` موجوداً، لا يُعاد التصنيف من الصفر؛ يعاد بناء routing حتمي للنية الحالية وتُجمع أول خانة ناقصة. هذا يمنع رسالة مثل «2» من تفسيرها كموضوع جديد أثناء جمع عدد البالغين. يمكن الإلغاء بكلمة/زر cancel، ويُغلق workflow بعد نجاح الأداة.
+عندما يكون `active_workflow` موجوداً، يعاد بناء routing حتمي للنية الحالية. الردود المتوقعة المنظمة أو القصيرة، مثل `101` عند انتظار رقم غرفة أو قيمة تحقق عند انتظارها، تتجاوز محلل Gemini وتملأ الخانة مباشرة. إذا كانت الرسالة سؤالاً جوهرياً واضحاً لا يشبه الخانة المنتظرة، تسمح بوابة السياق بتحليل تغير الموضوع؛ وعند قرار Knowledge موثوق يُغلق workflow السابق، بينما يحافظ فشل المزود أو الغموض على الحالة ويسأل توضيحاً. يمكن الإلغاء بكلمة/زر cancel، ويُغلق workflow بعد نجاح الأداة.
 
-## 10.6 قابلية توسيع المعرفة
+## 10.6 بوابة الثقة ومحلل السياق
+
+يستدعى `HybridIntentRoutingService` فقط عند واحدة أو أكثر من الحالات العامة: سبب توجيه متعارض بين معلومة وفعل، أو ثقة أقل من `HYBRID_LLM_ROUTER_CONFIDENCE_THRESHOLD`، أو هامش أصغر من عتبة المصنف، أو سؤال معلوماتي قصير قابل لأكثر من معنى، أو تغير موضوع محتمل أثناء workflow. أما الأوامر، والتحية/السلامة الواضحة، والـworkflow reply المتوقع، و`BKG`/`SR` المنظم، وطلب التوفر المكتمل، والتصنيف عالي الثقة غير المتعارض فتتجاوز المحلل.
+
+العقد `HybridIntentDecision` يقبل فقط:
+
+- `mode`: إحدى `action`, `knowledge`, `ambiguous`, `unsupported`.
+- `intent`: نية موجودة في enum أو `null` وفق mode.
+- `confidence` و`language`.
+- `entities` غير حساسة ومقيدة، مثل الغرفة والتواريخ والعدد والفئة ووصف الخدمة.
+- `missing_fields`, `needs_clarification`, و`clarification_question`.
+- `normalized_knowledge_query` و`material_conditions`.
+
+أي حقل إضافي، أو intent مجهول، أو محاولة تمرير tool أو query قاعدة بيانات، أو لغة غير لغة الرسالة، أو JSON غير صالح يرفض. المحلل **لا ينفذ**؛ القرار النهائي يعاد بناؤه كـ`RoutingResult` وتُحسب الخانات المطلوبة من taxonomy لا من ادعاء النموذج. الإعدادات هي `HYBRID_LLM_ROUTER_ENABLED`, `HYBRID_LLM_ROUTER_CONFIDENCE_THRESHOLD`, و`HYBRID_LLM_ROUTER_TIMEOUT_SECONDS`.
+
+عدم استدعاء المحلل لكل رسالة قرار مقصود: يخفض latency والكلفة والحصة، ويحافظ على سلوك حتمي قابل للاختبار للأوامر والمعرّفات والخانات المنظمة. المقابل هو اعتماد خارجي إضافي فقط في الرسائل الصعبة؛ فائدته فهم اللهجة والطلبات غير المباشرة وتمييز الفعل من المعلومة، وحدوده timeout وquota واحتمال قرار غير صالح، ولذلك تبقى طبقة السياسة الحتمية حاجز الأمان.
+
+## 10.7 قابلية توسيع المعرفة
 
 لا يضيف المطور rule لكل موضوع مستند. أي سؤال معلوماتي جوهري يمر إلى البحث في **جميع القطع الناتجة من النسخ المعتمدة في الفهرس النشط**. لذلك يستطيع Admin إضافة موضوع مستقبلي واعتماده وإعادة بناء FAISS، ثم يصبح قابلاً للوصول دلالياً دون alias خاص. اختبار القبول الحي opt-in ينشئ موضوع مظلة مؤقتاً لإثبات الفكرة في [`backend/tests/integration/test_production_rag_acceptance.py`](../backend/tests/integration/test_production_rag_acceptance.py)، لكن التشغيل الكامل الحي Tests 1–8 لم يكتمل بسبب نفاد حصة Gemini المجانية، ولا يُدعى هنا أنه نجح.
 
-اختبارات التوجيه المحلية التي تدعم الفصل موجودة في [`backend/tests/unit/domain/test_intent_pipeline.py`](../backend/tests/unit/domain/test_intent_pipeline.py). أما الاختبارات التي تثبت fallback بعد rewritten retrieval دون شبكة ففي [`backend/tests/unit/domain/test_llm_orchestration.py`](../backend/tests/unit/domain/test_llm_orchestration.py).
+اختبارات التوجيه المحلية التي تدعم الفصل موجودة في [`backend/tests/unit/domain/test_intent_pipeline.py`](../backend/tests/unit/domain/test_intent_pipeline.py)، واختبارات بوابة الثقة والعقد والفشل والخصوصية في [`backend/tests/unit/domain/test_hybrid_intent_routing.py`](../backend/tests/unit/domain/test_hybrid_intent_routing.py). أما الاختبارات التي تثبت relevance validation وfallback بعد rewritten retrieval دون شبكة ففي [`backend/tests/unit/domain/test_llm_orchestration.py`](../backend/tests/unit/domain/test_llm_orchestration.py).
 
 # 11. حالة المحادثة (Conversation State)
 
@@ -419,9 +444,11 @@ flowchart TD
 
 المصدر: [`backend/src/hotel_bot/core/config.py`](../backend/src/hotel_bot/core/config.py) والثابت في [`backend/src/hotel_bot/application/llm.py`](../backend/src/hotel_bot/application/llm.py).
 
+بعد عتبة FAISS، لا يعتمد النظام top-one الضعيف آلياً: يحافظ على عدة مرشحين وعنوان كل قطعة ولغتها ومعرفها وscore، ثم يعيد ترتيبها بصورة عامة وفق تغطية `material_conditions` والتداخل اللفظي والدرجة الدلالية. القطعة الضعيفة التي لا تتقاطع مع query أو أي شرط تُرفض؛ ولا توجد كلمات إنتاجية خاصة بالفطور أو الزواج أو المطار أو عنوان مستند بعينه. تستخدم صياغة الجواب وfallback المجموعة النهائية نفسها.
+
 ## 12.4 إعادة الصياغة الدلالية
 
-إعادة الصياغة ليست جواباً وليست قاعدة موضوع. `KnowledgeSearchQuery` يطلب `language`, `query`, و`material_conditions`. يتحقق التطبيق أن اللغة لم تتغير، ثم يبحث في query والشروط. هذه خطوة Gemini إضافية فقط عندما تكون المطابقة ضعيفة؛ لذلك قد تحسن اللهجات والضمائر لكنها تزيد latency والحصة. الـprompt في [`backend/src/hotel_bot/application/prompts.py`](../backend/src/hotel_bot/application/prompts.py)، والعقد في [`backend/src/hotel_bot/domain/llm/models.py`](../backend/src/hotel_bot/domain/llm/models.py).
+إعادة الصياغة ليست جواباً وليست قاعدة موضوع. إذا أنتج محلل النية `normalized_knowledge_query` صالحاً مع `material_conditions`، يعيد RAG استخدامه مباشرةً ولا ينفذ `knowledge_query_rewrite` ثانية للرسالة نفسها. إذا لم ينتجه وكانت المطابقة الأولية ضعيفة فقط، يطلب `KnowledgeSearchQuery` حقول `language`, `query`, و`material_conditions` ويتحقق التطبيق أن اللغة لم تتغير ثم يبحث مرة واحدة. هذا يقلل call إضافياً في المسار الهجين، مع بقاء تحسين اللهجات والضمائر متاحاً. الـprompt في [`backend/src/hotel_bot/application/prompts.py`](../backend/src/hotel_bot/application/prompts.py)، والعقد في [`backend/src/hotel_bot/domain/llm/models.py`](../backend/src/hotel_bot/domain/llm/models.py).
 
 ## 12.5 fallback عند فشل Gemini
 
@@ -787,13 +814,14 @@ erDiagram
 
 ## 19.1 Gemini
 
-يؤدي ثلاث وظائف محتملة:
+يؤدي أربع وظائف محتملة:
 
-1. `knowledge_query_rewrite` عند ضعف score.
-2. `tool_proposal` إذا لم تُمرر معاملات trusted؛ في رحلة Telegram الحالية تمرر طبقة guest flow معاملات trusted، لذلك لا تحتاج عادةً proposal call.
-3. `final_answer` لصياغة جواب من أدلة أو نتيجة أداة.
+1. `hybrid_intent_analysis` لفهم النية والسياق في الحالات التي تجتاز بوابة عدم اليقين فقط.
+2. `knowledge_query_rewrite` عند ضعف score وغياب query صالح من التحليل السابق.
+3. `tool_proposal` إذا لم تُمرر معاملات trusted؛ في رحلة Telegram الحالية تمرر طبقة guest flow معاملات trusted، لذلك لا تحتاج عادةً proposal call.
+4. `final_answer` لصياغة جواب من أدلة أو نتيجة أداة.
 
-الـadapter يعطل automatic function calling. التطبيق هو من يقرر هل ينفذ. الإعداد الافتراضي الحالي `gemini-2.5-flash`. المصدر: [`backend/src/hotel_bot/infrastructure/gemini.py`](../backend/src/hotel_bot/infrastructure/gemini.py) و[`backend/src/hotel_bot/core/config.py`](../backend/src/hotel_bot/core/config.py).
+الـadapter يعطل automatic function calling. التطبيق هو من يقرر هل ينفذ. الإعداد الافتراضي الحالي `gemini-2.5-flash`. محلل النية يملك timeout أقصر قابل للضبط، ومحاولة تطبيق واحدة وcache حسب message ID، ولا يرسل أدوات في الطلب. المصدر: [`backend/src/hotel_bot/infrastructure/gemini.py`](../backend/src/hotel_bot/infrastructure/gemini.py) و[`backend/src/hotel_bot/core/config.py`](../backend/src/hotel_bot/core/config.py).
 
 ## 19.2 Sentence Transformer
 
@@ -805,11 +833,11 @@ erDiagram
 
 ## 19.4 Intent Classifier/Router
 
-المصنف يقترح النية واحتمالها، والراوتر يضيف قواعد السلامة والعتبات وفصل action/information. لا يجوز مساواة predicted intent بتنفيذ أداة؛ `allow_tool_execution` لا يمنحه المصنف مباشرة.
+المصنف يقترح النية واحتمالها وهامشها، والراوتر يضيف قواعد السلامة والعتبات وفصل action/information. عند عدم اليقين فقط، يعيد محلل LLM عقداً منظماً إلى `HybridIntentRoutingService`، التي ترفض النية غير الموجودة والحقل الإضافي واللغة الخاطئة والثقة المنخفضة. لا يجوز مساواة classifier أو LLM intent بتنفيذ أداة؛ `allow_tool_execution` لا يمنحه أي منهما مباشرة.
 
 ## 19.5 القواعد الحتمية
 
-التواريخ والسعات والتداخلات والفئات وحالات الطلب والتأكيد والتحقق وidempotency كلها في Python/domain policies، لا في Gemini. لذلك تبقى العمليات قابلة للاختبار حتى عند تعطل النموذج.
+التواريخ والسعات والتداخلات والفئات وحالات الطلب والتأكيد والتحقق وidempotency كلها في Python/domain policies، لا في Gemini. اسم الأداة مشتق من allow-list ثابتة بعد routing، والخانات المطلوبة يعاد حسابها من taxonomy، وقيم التحقق لا تدخل قرار LLM. لذلك تبقى العمليات قابلة للاختبار حتى عند تعطل النموذج.
 
 ## 19.6 fallback المضبوط
 
@@ -834,7 +862,11 @@ HotelOperationsService
 MySQL transaction
 ```
 
-كما أن قيم التحقق ومراجع الحجز ورقم الغرفة لا ينبغي إدخالها في سياق LLM. التطبيق يمررها إلى الأداة خارج context بعد redaction.
+قيم التحقق لا تدخل سياق LLM مطلقاً، ومراجع الحجز والتتبع تمثل بعلامات وجود منزوعة القيمة؛ أما رقم الغرفة فهو entity تشغيلية عادية يسمح بها عقد التحليل ضمن حدود، لكنه لا يمنح صلاحية تنفيذ. تمر القيم الحساسة إلى الأداة خارج context بعد redaction.
+
+## 19.8 الكلفة والحصة وفشل المزود
+
+السلوك المتوقع لنداءات **تحليل النية** هو: أمر واضح `0`، ورد خانة workflow `0`، وbooking منظم `0`، وتوفر كامل `0`، ورسالة ملتبسة بحد أقصى `1`. بعد اختيار Knowledge تبقى صياغة الجواب نداءً مستقلاً في المعمارية الحالية؛ وقد يضاف rewrite واحد فقط إذا لم يعطِ المحلل query وكان score ضعيفاً. عند 429 أو timeout أو network/provider error أو JSON غير صالح لا توجد retry loop في طبقة hybrid ولا تنفيذ مخمن؛ يسجل `llm_runs` الحالة، وتنتج الطبقة سؤال توضيح مضبوطاً مع metadata آمنة. هذه الموازنة تحسن فهم اللهجات مقابل latency وكلفة واعتماد خارجي محدودين بالبوابة.
 
 # 20. الأمان والخصوصية
 
@@ -849,7 +881,8 @@ MySQL transaction
 | Telegram Webhook | secret header بمقارنة constant-time، JSON وحجم محدود |
 | هوية Telegram | HMAC-SHA256 مع pepper، لا user ID خام |
 | Booking verification | PBKDF2-SHA256 210k + salt + compare_digest |
-| PII redaction | booking/tracking/verification/email/phone في Admin؛ verification في الرسائل وLLM context |
+| PII redaction | booking/tracking/verification/email/phone في Admin؛ verification في الرسالة والملخص والدورات الواردة والصادرة قبل LLM |
+| Hybrid analyzer privacy | compact context فقط، markers لوجود booking/tracking/verification، ولا passwords/API keys/tokens/raw records أو قيمة تحقق |
 | Tool schemas | `extra=forbid`، أنواع وحدود وأنماط، allow-list وأقصى calls وtimeout |
 | Write confirmation | إلزامي لخدمة الغرف والصيانة |
 | Idempotency | channel update ledger وservice idempotency key |
@@ -875,7 +908,7 @@ MySQL transaction
 
 ## 20.3 حماية prompt
 
-`SYSTEM_INSTRUCTION` يعتبر conversation/evidence/tool results بيانات غير موثوقة ويمنع اتباع تعليمات داخلها. كما يحدد evidence/tool allow-lists ويتحقق من schema. هذه دفاعات مهمة لكنها ليست حلاً كاملاً ضد كل prompt injection، خصوصاً إذا كان المستند المعتمد نفسه خبيثاً؛ لذلك اعتماد Admin ومراجعة المحتوى جزء من نموذج الثقة.
+`SYSTEM_INSTRUCTION` يعتبر conversation/evidence/tool results بيانات غير موثوقة ويمنع اتباع تعليمات داخلها. طلب التحليل يستخدم compact context ولا يرسل structured state الكامل أو الملخص الخام، ومخططه `extra=forbid` لا يحتوي tool name أو authorization أو reasoning. كما يحدد مسار الجواب evidence/tool allow-lists ويتحقق من schema. هذه دفاعات مهمة لكنها ليست حلاً كاملاً ضد كل prompt injection، خصوصاً إذا كان المستند المعتمد نفسه خبيثاً؛ لذلك اعتماد Admin ومراجعة المحتوى جزء من نموذج الثقة.
 
 ## 20.4 تحسينات أمنية مستقبلية
 
@@ -933,15 +966,17 @@ MySQL transaction
 
 الرفض الأمني المتوقع مثل verification خاطئ أو confirmation مفقود يجب ألا يحتسب execution failure. الكود يفصل `rejected` عن `failed + timed_out`؛ مقام valid success rate هو succeeded + unexpected failures فقط. المصدر: [`backend/src/hotel_bot/infrastructure/repositories/admin.py`](../backend/src/hotel_bot/infrastructure/repositories/admin.py).
 
+لا تعيد هذه المهمة حساب artifact الدقة التاريخي للمصنف ولا تخترع score للـhybrid. يسجل سجل الرسالة القرار النهائي ونسخة `hybrid-intent-v1.0.0` عند استخدام المحلل، ويسجل `llm_runs` نوع `hybrid_intent_analysis` وحالته ومدته وكلفته التقديرية، بينما يغطي الاختبار offline دقة الاختيار لكل سيناريو، ومعدل الاستدعاء/التجاوز، وfallback، وعدم تنفيذ أداة.
+
 ## 21.4 آخر حالة تحقق مثبتة
 
-- focused offline tests: **59 passed**.
-- normal backend suite: **148 passed, 15 skipped**.
+- focused offline tests: **92 passed**.
+- normal backend suite مع `RUN_PRODUCTION_RAG=0`: **175 passed, 15 skipped**.
 - `python -m compileall backend/src/hotel_bot`: **passed**.
 - Ruff على ملفات المصدر المتغيرة: **passed**.
 - Mypy على ملفات المصدر المتغيرة: **passed**.
 
-هذه نتائج التحقق المحلية المرتبطة بالنسخة `82af92b` كما ثبتت قبل إعداد هذه الوثيقة؛ لم تُعد الاختبارات ضمن مهمة الوثيقة الحالية.
+هذه نتائج تحقق محلية offline نُفذت على شجرة تغيير الـConfidence-Gated Hybrid Router قبل commit التسليم. الحالات الـ15 المتخطاة بوابات opt-in لـMySQL أو production RAG، ولم يُستدعَ Gemini أو أي API خارجي.
 
 ## 21.5 قيد اختبار RAG الحي
 
@@ -955,8 +990,9 @@ MySQL transaction
 
 | الملف | ما يثبته |
 | --- | --- |
+| [`backend/tests/unit/domain/test_hybrid_intent_routing.py`](../backend/tests/unit/domain/test_hybrid_intent_routing.py) | بوابة الاستدعاء/التجاوز، عقد القرار، اللهجة، 429/timeout/schema، cache، privacy، مواضيع مستقبلية، وعدم تخمين أداة |
 | [`backend/tests/unit/domain/test_intent_pipeline.py`](../backend/tests/unit/domain/test_intent_pipeline.py) | dataset، المقاييس، العتبات، action-vs-information، التوفر والحجز الحقيقيان |
-| [`backend/tests/unit/domain/test_llm_orchestration.py`](../backend/tests/unit/domain/test_llm_orchestration.py) | budget، grounding allow-list، query rewrite، 429 fallback، tool fallback |
+| [`backend/tests/unit/domain/test_llm_orchestration.py`](../backend/tests/unit/domain/test_llm_orchestration.py) | budget، grounding allow-list، query reuse/rewrite، relevance validation، 429 fallback، tool fallback |
 | [`backend/tests/unit/domain/test_controlled_tools.py`](../backend/tests/unit/domain/test_controlled_tools.py) | المخططات، الأداة المجهولة، الدور، الحد، confirmation، redaction، timeout |
 | [`backend/tests/unit/domain/test_conversation_context.py`](../backend/tests/unit/domain/test_conversation_context.py) | آخر خمس دورات والـtoken budget واستبعاد redacted/incomplete |
 | [`backend/tests/unit/domain/test_guest_flow_parameters.py`](../backend/tests/unit/domain/test_guest_flow_parameters.py) | استخراج المعاملات وعدم تسرب الأسرار وحالات multi-turn |
@@ -1108,7 +1144,8 @@ MySQL healthy
 | Service tracking | موجود لطلب مرتبط بحجز | وحدة + MySQL tools | غير مثبت للنسخة الحالية | الطلب بلا حجز يتطلب موظفاً |
 | Knowledge documents | create/revision/approve/archive | Admin API + lifecycle | وجود UI/config فقط | مراجعة المحتوى بشرية |
 | FAISS rebuild | background immutable activation | lifecycle + FAISS unit | غير مثبت بعد كل نشر | UI لا يعمل polling |
-| Generic knowledge routing | action-vs-information committed | focused offline passed | full live Tests 1–8 معلق | حالات لغوية جديدة |
+| Confidence-gated hybrid routing | fast paths + classifier + advisory structured LLM + deterministic policy | 24 hybrid cases ضمن 92 focused passed | قبول Gemini الحي معلق | quota/latency/provider |
+| Generic knowledge routing | action-vs-information + expandable RAG | focused offline passed | full live Tests 1–8 معلق | حالات لغوية جديدة |
 | Gemini grounded answer | schema/allow-list/fallback | stubbed offline passed | full live run غير مكتمل | quota/latency/provider |
 | Rewritten fallback | يستخدم الدليل النهائي | 429 regression passed | غير مثبت حياً | fallback يعرض chunk مباشرة |
 | Admin auth refresh | session restore + `/me` | Frontend tests + Admin API | غير مثبت لهذه النسخة | bearer في sessionStorage |
@@ -1116,13 +1153,13 @@ MySQL healthy
 | Evaluations | artifacts + operational aggregation | Backend suite | غير مثبت لهذه النسخة | dataset اصطناعي |
 | Deployment config | Hostinger وstandalone | config/contracts سابقة | لا دليل أن HEAD الحالي منشور | البيئة الخارجية وNPM |
 
-الحالة المرجعية هي commit `82af92bc0add4b3fe93727f5223adc29a51da920`. لا يوجد في هذه الوثيقة ادعاء أن live production تلقى هذا commit.
+الحالة المرجعية الدقيقة هي commit النهائي المبلغ في تسليم مهمة الـHybrid Router. لا يوجد في هذه الوثيقة ادعاء أن live production تلقى ذلك commit.
 
 # 25. القيود الحالية
 
 1. **Gemini free quota:** منعت إكمال قبول Tests 1–8 الحي.
 2. **اعتماد خارجي:** جواب LLM وTelegram يتأثران بالشبكة ومزودين خارجيين.
-3. **Latency:** الاسترجاع الضعيف قد يضيف query-rewrite call قبل final-answer call.
+3. **Latency:** الرسالة غير المؤكدة قد تضيف hybrid-analysis call، والاسترجاع الضعيف قد يضيف query-rewrite call إذا لم ينتج التحليل query، ثم يبقى final-answer call.
 4. **حجم النموذج:** Sentence Transformer وPyTorch يزيدان image/cache والذاكرة ووقت أول تحميل.
 5. **فندق محاكى:** لا PMS ولا inventory حقيقي ولا dispatch فعلي للطلبات.
 6. **بيانات اصطناعية:** قياسات intent/retrieval لا تعادل بيانات نزلاء حقيقية.
@@ -1189,10 +1226,10 @@ MySQL healthy
 | 02:20–03:10 | Telegram: `أريد متابعة الحجز BKG-2026-0001` ثم `0101` | «المرجع وحده لا يكفي؛ الرمز يتحقق من PBKDF2 hash ولا يدخل LLM.» |
 | 03:10–03:40 | كرر مع رمز خاطئ لحجز عرض آخر | «الحجز الغائب والرمز الخاطئ يعطيان فشلاً عاماً لا يكشف أيهما صحيح.» |
 | 03:40–04:30 | Telegram: `أريد غرفة من 2026-08-10 إلى 2026-08-12 لشخصين` | «طلب صريح؛ ينفذ availability tool ولا يذهب إلى RAG.» |
-| 04:30–05:40 | Telegram: طلب مناشف للغرفة 101 ثم Confirm | «الكتابة لا تحدث قبل التأكيد، والطلب idempotent.» |
+| 04:30–05:40 | Telegram: `جيبلي الفطور لو سمحت` ثم `101` ثم Confirm | «الصياغة العامية اجتازت بوابة التعارض إلى room service؛ طلب رقم الغرفة فقط، والكتابة لم تحدث قبل التأكيد.» |
 | 05:40–06:30 | Admin → Knowledge، افتح مستند airport أو مستند سياسة معتمد | «المعرفة versioned ولا يدخل FAISS إلا المعتمد.» |
 | 06:30–07:10 | اضغط Rebuild FAISS فقط إذا كان ضرورياً ومجهزاً مسبقاً | «202 تعني بدأ البناء؛ لا أخلطها مع نجاح التفعيل.» |
-| 07:10–08:10 | اسأل: `هل يوجد عندكم توصيل من مطار دمشق، وشو لازم أعطيكم؟` | «سؤال بصياغة بديلة؛ يجب أن يسترجع المستند ولا ينفذ أداة.» |
+| 07:10–08:10 | اسأل: `شو وقت تقديم الفطور؟` ثم `الفطور؟` ثم سؤال السياسة | «الأول Knowledge، والثاني clarification مركز، والثالث Knowledge لا availability؛ Tool events تساوي صفراً.» |
 | 08:10–09:00 | افتح Conversation Detail | «Tool events لهذا السؤال صفر. الواجهة الحالية لا تعرض evidence ID؛ أعرض المستند والجواب جنباً إلى جنب وأذكر هذا القيد.» |
 | 09:00–09:40 | افتح Service Requests أو المحادثة السابقة | «هنا أثر الأداة المنقح وحالة الطلب.» |
 | 09:40–10:00 | افتح Evaluations | «هذه artifacts ثابتة وmetrics تشغيلية، وليست ادعاء اختبار مستخدمين حقيقيين.» |
@@ -1212,7 +1249,7 @@ MySQL healthy
 ### Gemini quota غير متاحة
 
 - لا تعِد المحاولة مرات كثيرة.
-- اعرض approved document وFAISS readiness واختبار 429 offline.
+- اعرض approved document وFAISS readiness واختبار 429 offline؛ يثبت أن فشل محلل النية يعطي clarification ولا يخمن أداة.
 - نفذ availability وbooking lookup لأن قواعدهما وأدواتهما deterministic؛ قد يستخدم الجواب tool fallback إذا Gemini غير متاح بعد نجاح الأداة.
 - قل بوضوح إن الصياغة الحية معطلة من مزود خارجي، لا إن «كل اختبارات RAG نجحت».
 
@@ -1246,7 +1283,7 @@ MySQL healthy
 3. نفذ availability؛ أداة Python/MySQL لا تعتمد على قرار Gemini بعد routing، ولها fallback من النتيجة.
 4. أنشئ خدمة غرف بالتأكيد واعرض `tool_executions` و`service_requests`.
 5. افتح Knowledge واعرض lifecycle والـchecksum.
-6. اعرض `test_rewritten_evidence_is_used_when_final_answer_is_rate_limited` ونتيجة الـ59 focused tests السابقة.
+6. اعرض `test_hybrid_intent_routing.py` و`test_rewritten_evidence_is_used_when_final_answer_is_rate_limited` ونتيجة الـ92 focused tests.
 7. افتح Evaluation artifacts واشرح حدودها.
 
 هذا المسار يثبت هندسة النظام والتحكم والبيانات حتى عند غياب المزود، لكنه لا يُسوق كبديل عن قبول RAG الحي المعلق.
@@ -1289,7 +1326,7 @@ MySQL healthy
 
 ### س9: لماذا Gemini؟
 
-لإعادة صياغة سؤال ضعيف دلالياً وصياغة جواب طبيعي من دليل أو نتيجة أداة ضمن JSON schema. لا نستخدمه كقاعدة بيانات أو مصدر حقيقة.
+لفهم دلالي مقيد للنية والسياق عند عدم اليقين فقط، وإعادة صياغة سؤال ضعيف دلالياً عند الحاجة، وصياغة جواب طبيعي من دليل أو نتيجة أداة ضمن JSON schema. لا نستخدمه كقاعدة بيانات أو مصدر حقيقة أو منفذ.
 
 ### س10: لماذا لا نستخدم Gemini embeddings؟
 
@@ -1307,7 +1344,7 @@ RAG يجيب «ماذا تقول سياسة الفندق؟»، بينما Tool C
 
 ### س13: كيف يعمل Intent Classification؟
 
-Naive Bayes مدرب على dataset ثنائي اللغة يستخدم word/bigram/character features وlexicon boosts. بعده SafeIntentRouter يطبق confidence thresholds وقواعد safety/action-vs-information. المصنف لا ينفذ.
+Naive Bayes مدرب على dataset ثنائي اللغة يستخدم word/bigram/character features وlexicon boosts. بعده SafeIntentRouter يطبق قواعد safety/action-vs-information، ثم بوابة ثقة وتعارض تستشير محلل LLM منظماً فقط في الحالات الصعبة. تعيد Python التحقق من القرار؛ لا المصنف ولا المحلل ينفذان.
 
 ### س14: لماذا Naive Bayes وليس BERT؟
 
@@ -1315,7 +1352,7 @@ Naive Bayes مدرب على dataset ثنائي اللغة يستخدم word/bigr
 
 ### س15: كيف لا تتحول كلمة «غرفة» إلى عملية؟
 
-`_is_explicit_action` يطلب دليلاً على بحث/حجز/توفر أو تواريخ. إذا كان النص سؤال سياسة جوهرياً، يحوله الراوتر إلى `KNOWLEDGE_CANDIDATE` حتى لو صنفه baseline كنية تشغيلية.
+`_is_explicit_action` يطلب دليلاً على بحث/حجز/توفر أو تواريخ. إذا تعارض الاسم التشغيلي مع سؤال سياسة، تستدعى بوابة الفهم ويقبل التطبيق `knowledge` المنظم فقط بعد schema/confidence validation؛ لا يوجد rule لموضوع السياسة نفسه.
 
 ### س16: كيف يعمل مستند جديد دون قاعدة برمجية؟
 
@@ -1323,7 +1360,7 @@ Naive Bayes مدرب على dataset ثنائي اللغة يستخدم word/bigr
 
 ### س17: ما عتبة الاسترجاع؟
 
-الافتراضي `0.35` لقبول evidence، مع أعلى خمس نتائج. إذا كان أقوى score أقل من `0.55` يُجرّب query rewrite. القيم configurable ما عدا rewrite trigger ثابت حالياً.
+الافتراضي `0.35` لقبول مرشح evidence، مع أعلى خمس نتائج. بعد ذلك يوجد فحص صلة عام للنتائج الضعيفة وتغطية الشروط. إذا كان أقوى score أقل من `0.55` ولم يقدم محلل النية query منظماً يُجرّب rewrite واحد. القيم configurable ما عدا trigger وفحص الصلة في الكود حالياً.
 
 ### س18: ماذا يحدث إن لم يوجد دليل؟
 
@@ -1387,7 +1424,7 @@ workflow النشط يجبر النية الحالية، وتُحفظ الخان
 
 ### س32: هل يرى Gemini رمز التحقق؟
 
-لا يفترض ذلك في رحلة التطبيق: تُنقح الرسالة، ويُنظف context، وتُمرر القيمة كـtrusted tool argument خارج LLM context، وتُحجب في audit.
+لا. تُنقح الرسالة والملخص والدورات الواردة والصادرة، ويستقبل محلل النية marker `VERIFICATION_VALUE_REDACTED` فقط، وتُمرر القيمة كـtrusted tool argument خارج LLM context، وتُحجب في audit. هذا مغطى باختبار يفحص prompt الفعلي للـstub.
 
 ### س33: كيف تحمون Admin؟
 
@@ -1447,7 +1484,7 @@ Backend stateless جزئياً لأن الحالة في MySQL، لكن FAISS art
 
 ### س1: ماذا لو استرجع FAISS مستنداً خاطئاً فوق العتبة؟
 
-قد يُصاغ جواب خاطئ رغم الضوابط. الـallow-list يضمن أن الجواب يستند إلى مستند مسترجع، لكنه لا يضمن صلته. الحل: dataset أكبر، hybrid search، reranker، thresholds بحسب اللغة، feedback، وحفظ evidence lineage للمراجعة.
+يعيد النظام ترتيب عدة مرشحين وفق الشروط والتداخل والscore، ويرفض المرشح الضعيف بلا أي صلة، ثم يقيد الجواب بالـallow-list. ما زال score مرتفع خاطئ ممكناً؛ لذلك لا ندعي ضماناً دلالياً كاملاً، والحل الأقوى dataset أكبر وhybrid search وreranker وfeedback وحفظ evidence lineage.
 
 ### س2: ماذا لو كان المستند المعتمد نفسه خاطئاً؟
 
@@ -1455,7 +1492,7 @@ RAG سيؤسس الجواب على خطأ authoritative. لذلك اعتماد A
 
 ### س3: ماذا لو تعطل Gemini؟
 
-لا دليل يعني unavailable؛ دليل موجود يعني fallback من القطعة؛ أداة ناجحة تعني قالباً من result؛ لا يُدعى نجاح أداة فاشلة. تنخفض جودة الصياغة، لكن التحكم يبقى.
+إذا تعطل تحليل النية في حالة غير مؤكدة يسأل النظام توضيحاً ولا يخمن أداة. لا دليل يعني unavailable؛ دليل موجود يعني fallback من القطعة النهائية المتحققة؛ أداة ناجحة تعني قالباً من result؛ لا يُدعى نجاح أداة فاشلة. تنخفض جودة الفهم/الصياغة، لكن التحكم يبقى.
 
 ### س4: لماذا لم تنجح suite الحية الكاملة؟
 
@@ -1463,7 +1500,7 @@ RAG سيؤسس الجواب على خطأ authoritative. لذلك اعتماد A
 
 ### س5: هل query rewriting يستحق API call إضافية؟
 
-يفيد الأسئلة اللهجية والضمائر عندما score ضعيف، لكنه يضاعف latency/حصة لبعض الرسائل. المشروع يشغله تحت 0.55 فقط. يلزم قياس ablation قبل اعتماده إنتاجياً.
+يفيد الأسئلة اللهجية والضمائر عندما score ضعيف، لكنه يزيد latency/حصة. إذا أعطى محلل النية query صالحاً يعاد استخدامه ويُلغى rewrite الإضافي؛ وإلا يعمل rewrite تحت 0.55 فقط. يلزم قياس ablation قبل اعتماده إنتاجياً.
 
 ### س6: كيف تعرف أن الجواب grounded؟
 
@@ -1511,7 +1548,7 @@ SQLAlchemy async وMySQL transactions وunique constraints وidempotency تدع�
 
 ### س17: ماذا لو أرسل المستخدم موضوعاً جديداً أثناء workflow؟
 
-التصميم الحالي يعطي workflow النشط الأولوية ولا يقاطع بسهولة، وفق متطلبات الاستمرارية. قد يسبب ذلك سوء تجربة عند تغيير الموضوع بوضوح؛ نحتاج intent-change policy أو أمر `/new`.
+الرد القصير أو المنظم المتوقع يبقى في workflow بلا LLM. أما سؤال جوهري لا يشبه الخانة المنتظرة فيمر عبر بوابة السياق؛ قرار Knowledge موثوق يغير الموضوع، والغموض أو فشل المزود يحافظان على workflow ويسألان توضيحاً. تبقى جودة اكتشاف التغير مرتبطة بالمحلل في الحالات اللهجية.
 
 ### س18: لماذا evidence غير ظاهر في Admin؟
 
@@ -1521,12 +1558,14 @@ SQLAlchemy async وMySQL transactions وunique constraints وidempotency تدع�
 
 | المصطلح العربي | English | المعنى في المشروع |
 | --- | --- | --- |
-| نموذج لغة كبير | Large Language Model (LLM) | Gemini المستخدم لإعادة الصياغة وصياغة الجواب |
+| نموذج لغة كبير | Large Language Model (LLM) | Gemini المستخدم للتحليل القصدي المقيد وإعادة الصياغة وصياغة الجواب |
 | الاسترجاع المعزز بالتوليد | Retrieval-Augmented Generation (RAG) | استرجاع دليل ثم توليد جواب منه |
 | استدعاء الأدوات | Tool Calling | اختيار وتنفيذ وظيفة مضبوطة |
 | التصنيف القصدي | Intent Classification | توقع نوع طلب المستخدم |
 | النية | Intent | label مثل availability أو hotel_info |
 | التوجيه | Routing | قرار Knowledge/Action/Clarify/Escalate |
+| بوابة الثقة | Confidence Gate | تحدد إن كان القرار واضحاً أو يحتاج تحليلاً دلالياً |
+| محلل النية الهجين | Hybrid Intent Analyzer | استشارة LLM منظمة غير تنفيذية للحالات الصعبة فقط |
 | الفعل مقابل المعلومة | Action vs Information | الفصل العام الذي يمنع noun-triggered workflows |
 | التضمين الدلالي | Embedding | متجه يمثل معنى النص |
 | نموذج الجمل المحول | Sentence Transformer | مولد embeddings متعدد اللغات |
@@ -1593,15 +1632,17 @@ SQLAlchemy async وMySQL transactions وunique constraints وidempotency تدع�
 
 ### الحل في جملة
 
-مساعد Telegram ثنائي اللغة يسجل الرسالة في MySQL، يحدد intent ويفصل السؤال المعلوماتي عن الفعل الصريح، ثم يستخدم RAG من FAISS أو أداة فندقية مضبوطة، ويطلب من Gemini صياغة جواب مؤسس.
+مساعد Telegram ثنائي اللغة يسجل الرسالة في MySQL، ويمررها عبر fast paths ومصنف وبوابة ثقة ومحلل دلالي استشاري عند الحاجة، ثم تستخدم طبقة حتمية RAG من FAISS أو أداة فندقية مضبوطة، ويصوغ Gemini جواباً مؤسساً.
 
 ### المعمارية المختصرة
 
 ```text
 Telegram
 → Webhook validation
-→ Conversation + Language
-→ Intent Router + Active Workflow
+→ Sensitive-data sanitization + Conversation State
+→ Deterministic Fast Paths + Existing Classifier
+→ Confidence/Conflict Gate → Optional Structured LLM Analysis
+→ Deterministic Policy and Parameter Validation
 → RAG (Sentence Transformer → FAISS → approved evidence)
    OR
    Tool (schema → confirmation → domain rules → MySQL)
@@ -1616,7 +1657,7 @@ Telegram
 | Channel | Telegram Bot API |
 | API | FastAPI/Pydantic |
 | Data | MySQL 8.4/SQLAlchemy/Alembic |
-| Intent | Naive Bayes + SafeIntentRouter |
+| Intent | Naive Bayes + SafeIntentRouter + Confidence-Gated Hybrid Analyzer |
 | Embeddings | Multilingual MiniLM Sentence Transformer |
 | Vector | FAISS IndexFlatIP |
 | Generation | `gemini-2.5-flash` |
@@ -1650,8 +1691,8 @@ Telegram
 
 ### نتائج الاختبار التي يجوز قولها
 
-- Focused offline: 59 passed.
-- Normal Backend: 148 passed, 15 skipped.
+- Focused offline: 92 passed.
+- Normal Backend مع live RAG معطّل: 175 passed, 15 skipped.
 - Compileall: passed.
 - Ruff: passed.
 - Mypy: passed.
@@ -1664,7 +1705,7 @@ Telegram
 1. الفندق والعمليات محاكاة.
 2. لا PMS ولا دفع ولا حجز حقيقي.
 3. Gemini وTelegram اعتمادان خارجيان.
-4. query rewrite قد يزيد latency/quota.
+4. hybrid analysis أو query rewrite قد يزيدان latency/quota، لكنهما gated ولا يعملان لكل رسالة.
 5. dataset اصطناعي ولا يوجد pilot حقيقي.
 6. evidence IDs لا تحفظ كعلاقة لكل جواب حالياً.
 7. Admin i18n واختبارات Frontend E2E غير كاملين.
@@ -1676,21 +1717,21 @@ Telegram
 
 ### خمس جمل مفتاحية في الدفاع
 
-1. «المصنف يقترح النية، لكنه لا يملك صلاحية تنفيذ أداة.»
-2. «وجود كلمة حجز أو غرفة لا يكفي؛ نبحث عن طلب فعل صريح، وإلا نجرب المعرفة الدلالية.»
+1. «المصنف ومحلل LLM يقترحان النية، لكنهما لا يملكان صلاحية تنفيذ أداة.»
+2. «وجود كلمة حجز أو غرفة لا يكفي؛ fast paths والـconfidence gate يفصلان الفعل من المعلومة بلا قاعدة موضوعية خاصة.»
 3. «RAG يحدد ما نعرفه، وTool Calling يحدد ما يمكن تنفيذه ضمن سياسة.»
-4. «Gemini يصيغ النتيجة، أما التحقق والتأكيد والمعاملات فهي مسؤولية التطبيق.»
+4. «Gemini يساعد في الفهم والصياغة، أما التحقق والتأكيد والمعاملات والتنفيذ فهي مسؤولية التطبيق.»
 5. «أميز بوضوح بين ما اختُبر محلياً، وما نُشر، وما بقي معلقاً بسبب الحصة الخارجية.»
 
 ### عشرة أسئلة يجب حفظها
 
 1. **لماذا RAG؟** لتحديث معرفة الفندق دون fine-tuning وتقليل الهلوسة.
 2. **لماذا Tool Calling؟** لتنفيذ عمليات منظمة ومتحققة بدل نص حر.
-3. **كيف تمنع noun-trigger؟** explicit-action guard ثم Knowledge للمعلومات.
+3. **كيف تمنع noun-trigger؟** explicit-action guard ثم confidence/conflict gate وقرار structured advisory، مع policy حتمية.
 4. **كيف تمنع التنفيذ غير المصرح؟** سجل مغلق، allow-list، schema، confirmation، domain rules.
 5. **كيف تحمي الحجز؟** reference + PBKDF2 verification، redaction، error موحد.
-6. **ماذا لو Gemini فشل؟** unavailable أو evidence/tool fallback بلا ادعاء كاذب.
+6. **ماذا لو Gemini فشل؟** clarification في فهم النية، أو unavailable/evidence/tool fallback في الجواب، بلا تنفيذ مخمن أو ادعاء كاذب.
 7. **كيف تضيف معرفة جديدة؟** create، approve، reindex، سؤال paraphrased؛ لا rule جديد.
 8. **هل الاختبار الحي كامل؟** لا؛ quota منعت إكمال Tests 1–8.
 9. **ما أكبر قيد؟** PMS غير موجود والبيانات اصطناعية والاعتماد الخارجي.
-10. **ما التطوير الأول؟** evidence lineage + index status ثم hybrid/reranking وpilot حقيقي.
+10. **ما التطوير الأول؟** evidence lineage + index status ثم reranking وpilot حقيقي وقياس حي للـhybrid بعد عودة الحصة.

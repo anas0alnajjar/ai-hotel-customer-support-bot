@@ -22,6 +22,7 @@ from hotel_bot.domain.conversation.enums import (
 from hotel_bot.domain.conversation.models import (
     ContextEnvelope,
     ConversationState,
+    ConversationTurn,
     MessageSnapshot,
 )
 from hotel_bot.domain.intent.enums import (
@@ -128,6 +129,52 @@ def test_bare_booking_verification_is_current_workflow_only_and_redacted() -> No
     assert "verification_value" not in unrelated
     assert "0101" not in sanitized.current_message.text
     assert sanitized.current_message.text == "[VERIFICATION_REDACTED]"
+
+
+def test_verification_value_is_removed_from_summary_and_complete_turns() -> None:
+    secret = "Verify-Secret-9281"
+    conversation_id = uuid4()
+    current = MessageSnapshot(
+        id=uuid4(),
+        conversation_id=conversation_id,
+        sequence_number=3,
+        direction=MessageDirection.INBOUND,
+        text=f"verification code: {secret}",
+        language="en",
+        correlation_id="summary-redaction",
+        created_at=datetime(2026, 7, 30, 12, 2, 0),
+    )
+    inbound = current.model_copy(
+        update={
+            "id": uuid4(),
+            "sequence_number": 1,
+            "text": f"previous verification code: {secret}",
+        }
+    )
+    outbound = current.model_copy(
+        update={
+            "id": uuid4(),
+            "sequence_number": 2,
+            "direction": MessageDirection.OUTBOUND,
+            "text": f"Never echo {secret}",
+        }
+    )
+    context = ContextEnvelope(
+        state=ConversationState(language="en"),
+        current_message=current,
+        turns=(ConversationTurn(inbound=inbound, outbound=outbound),),
+        evidence=(),
+        summary=f"Guest provided {secret}.",
+        estimated_tokens=30,
+        truncated=False,
+    )
+
+    sanitized = sanitize_context(context, verification_value=secret)
+    serialized = sanitized.model_dump_json()
+
+    assert secret not in serialized
+    assert sanitized.summary is not None
+    assert "[REDACTED]" in sanitized.summary
 
 
 def test_room_service_extracts_natural_room_phrase_and_short_followups() -> None:

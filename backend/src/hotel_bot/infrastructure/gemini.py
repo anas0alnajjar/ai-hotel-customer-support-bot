@@ -6,6 +6,7 @@ from typing import Any, cast
 from google import genai
 from google.genai import errors, types
 
+from hotel_bot.domain.llm.enums import LLMRequestKind
 from hotel_bot.domain.llm.errors import LLMContractError, LLMTimeoutError, LLMUnavailableError
 from hotel_bot.domain.llm.models import LLMRequest, LLMResponse, LLMUsage, ProposedToolCall
 
@@ -48,6 +49,13 @@ class GeminiAdapter:
             for item in request.tools
         ]
         config = types.GenerateContentConfig(
+            http_options=(
+                types.HttpOptions(
+                    retry_options=types.HttpRetryOptions(attempts=1)
+                )
+                if request.kind is LLMRequestKind.HYBRID_INTENT_ANALYSIS
+                else None
+            ),
             system_instruction=request.system_instruction,
             max_output_tokens=request.max_output_tokens,
             automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),

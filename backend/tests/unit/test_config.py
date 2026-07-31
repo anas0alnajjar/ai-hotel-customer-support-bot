@@ -42,6 +42,9 @@ def test_context_and_retention_defaults_match_approved_policy() -> None:
     assert settings.intent_general_confidence_threshold == 0.60
     assert settings.intent_action_confidence_threshold == 0.80
     assert settings.intent_confidence_margin_threshold == 0.15
+    assert settings.hybrid_llm_router_enabled is True
+    assert settings.hybrid_llm_router_confidence_threshold == 0.75
+    assert settings.hybrid_llm_router_timeout_seconds == 5.0
     assert settings.tool_read_timeout_ms == 2000
     assert settings.tool_write_timeout_ms == 5000
     assert settings.tool_max_calls_per_turn == 3

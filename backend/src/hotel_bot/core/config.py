@@ -67,6 +67,21 @@ class Settings(BaseSettings):
     intent_confidence_margin_threshold: float = Field(
         default=0.15, ge=0, le=1, alias="INTENT_CONFIDENCE_MARGIN_THRESHOLD"
     )
+    hybrid_llm_router_enabled: bool = Field(
+        default=True, alias="HYBRID_LLM_ROUTER_ENABLED"
+    )
+    hybrid_llm_router_confidence_threshold: float = Field(
+        default=0.75,
+        ge=0,
+        le=1,
+        alias="HYBRID_LLM_ROUTER_CONFIDENCE_THRESHOLD",
+    )
+    hybrid_llm_router_timeout_seconds: float = Field(
+        default=5.0,
+        ge=0.25,
+        le=20,
+        alias="HYBRID_LLM_ROUTER_TIMEOUT_SECONDS",
+    )
 
     knowledge_index_path: Path = Field(
         default=Path("backend/data/faiss"), alias="KNOWLEDGE_INDEX_PATH"

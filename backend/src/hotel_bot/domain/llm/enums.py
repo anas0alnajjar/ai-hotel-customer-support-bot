@@ -10,6 +10,7 @@ class LLMRunStatus(StrEnum):
 
 
 class LLMRequestKind(StrEnum):
+    HYBRID_INTENT_ANALYSIS = "hybrid_intent_analysis"
     KNOWLEDGE_QUERY_REWRITE = "knowledge_query_rewrite"
     TOOL_PROPOSAL = "tool_proposal"
     FINAL_ANSWER = "final_answer"

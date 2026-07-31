@@ -7,7 +7,10 @@ from typing import Literal
 from uuid import UUID
 
 from hotel_bot.application.conversations import ConversationService
-from hotel_bot.application.intent_routing import IntentRoutingService
+from hotel_bot.application.intent_routing import (
+    HybridIntentRoutingService,
+    IntentRoutingService,
+)
 from hotel_bot.application.llm import HybridOrchestrator
 from hotel_bot.application.telegram import telegram_identity_hash
 from hotel_bot.domain.conversation.enums import ActiveWorkflow
@@ -615,7 +618,12 @@ def sanitize_context(
                     update={
                         "text": sanitize(turn.inbound.text)
                     }
-                )
+                ),
+                "outbound": turn.outbound.model_copy(
+                    update={
+                        "text": sanitize(turn.outbound.text)
+                    }
+                ),
             }
         )
         for turn in context.turns
@@ -632,8 +640,105 @@ def sanitize_context(
             "current_message": current,
             "turns": turns,
             "state": state,
+            "summary": (
+                sanitize(context.summary)
+                if context.summary is not None
+                else None
+            ),
         }
     )
+
+
+def _hybrid_safe_markers(
+    parameters: Mapping[str, object],
+) -> frozenset[str]:
+    markers: set[str] = set()
+    if parameters.get("booking_reference"):
+        markers.add("BOOKING_REFERENCE_PRESENT")
+    if parameters.get("tracking_code"):
+        markers.add("SERVICE_TRACKING_CODE_PRESENT")
+    if parameters.get("verification_value"):
+        markers.add("VERIFICATION_VALUE_REDACTED")
+    return frozenset(markers)
+
+
+def _available_parameter_names(
+    parameters: Mapping[str, object],
+) -> frozenset[str]:
+    return frozenset(
+        name
+        for name, value in parameters.items()
+        if value is not None and value != ""
+    )
+
+
+def _active_workflow_expected_reply(
+    state: ConversationState,
+    text: str,
+) -> bool:
+    """Recognize bounded workflow-field replies without semantic AI analysis."""
+
+    workflow = state.active_workflow
+    if workflow is None:
+        return False
+    normalized = normalize_text(text)
+    words = normalized.split()
+    informational = (
+        "?" in text
+        or "؟" in text
+        or (
+            bool(words)
+            and words[0]
+            in {
+                "هل",
+                "شو",
+                "ما",
+                "ماذا",
+                "متى",
+                "اين",
+                "وين",
+                "كيف",
+                "what",
+                "when",
+                "where",
+                "why",
+                "how",
+                "does",
+                "is",
+                "are",
+            }
+        )
+    )
+    if informational:
+        return False
+    if workflow is ActiveWorkflow.AVAILABILITY:
+        return bool(
+            DATE_PATTERN.search(text)
+            or ADULTS_PATTERN.search(text)
+            or BARE_COUNT_PATTERN.fullmatch(text)
+        )
+    if workflow is ActiveWorkflow.BOOKING_LOOKUP:
+        return bool(
+            BOOKING_PATTERN.search(text)
+            or VERIFY_PATTERN.search(text)
+            or BARE_VERIFICATION_PATTERN.fullmatch(text)
+        )
+    if workflow is ActiveWorkflow.REQUEST_STATUS:
+        return bool(
+            TRACKING_PATTERN.search(text)
+            or VERIFY_PATTERN.search(text)
+            or BARE_VERIFICATION_PATTERN.fullmatch(text)
+        )
+    if workflow in {
+        ActiveWorkflow.ROOM_SERVICE,
+        ActiveWorkflow.MAINTENANCE,
+    }:
+        return bool(
+            ROOM_PATTERN.search(text)
+            or LEADING_ROOM_PATTERN.search(text)
+            or 1 <= len(words) <= 12
+        )
+    return False
 
 
 def _forced_routing(
@@ -874,11 +979,13 @@ class HotelGuestProcessor:
         intents: IntentRoutingService,
         orchestrator: HybridOrchestrator,
         identity_pepper: str,
+        hybrid_router: HybridIntentRoutingService | None = None,
     ) -> None:
         self._conversations = conversations
         self._intents = intents
         self._orchestrator = orchestrator
         self._identity_pepper = identity_pepper
+        self._hybrid_router = hybrid_router
 
     async def process(
         self,
@@ -1240,26 +1347,57 @@ class HotelGuestProcessor:
                 )
             )
 
+        hybrid_resolution = None
+        if self._hybrid_router is not None and not confirmed:
+            hybrid_resolution = await self._hybrid_router.resolve(
+                sanitize_context(
+                    context,
+                    verification_value=(
+                        verification_value
+                        if isinstance(verification_value, str)
+                        else None
+                    ),
+                ),
+                routing,
+                available_parameters=_available_parameter_names(parameters),
+                safe_markers=_hybrid_safe_markers(parameters),
+                active_expected_reply=_active_workflow_expected_reply(
+                    state,
+                    message.text,
+                ),
+            )
+            routing = hybrid_resolution.routing
+            for name, value in hybrid_resolution.entities.items():
+                if parameters.get(name) in {None, ""}:
+                    parameters[name] = value
+
         routing = _resolve_service_request_routing(
             routing,
             parameters,
         )
+        if hybrid_resolution is not None and hybrid_resolution.ai_used:
+            await self._intents.store_result(message_id, routing)
 
         workflow = INTENT_WORKFLOW.get(
             routing.prediction.intent
         )
 
         active_workflow = state.active_workflow
-        if (
-            not confirmed
-            and workflow is not None
-            and routing.decision
-            in {
-                RoutingDecision.CLARIFY,
-                RoutingDecision.ACTION_CANDIDATE,
-            }
-        ):
-            active_workflow = workflow
+        if not confirmed:
+            if routing.reason_code in {
+                "hybrid_knowledge_candidate",
+                "hybrid_unsupported",
+            }:
+                active_workflow = None
+            elif (
+                workflow is not None
+                and routing.decision
+                in {
+                    RoutingDecision.CLARIFY,
+                    RoutingDecision.ACTION_CANDIDATE,
+                }
+            ):
+                active_workflow = workflow
 
         updated_state = _state_with_parameters(
             state,

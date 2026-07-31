@@ -954,3 +954,113 @@ def test_airport_transfer_answer_is_grounded_in_retrieved_evidence_without_tool_
     assert result.model_used is True
     assert len(llm_audit.records) == 1
     assert tool_audit.records == []
+
+
+def test_hybrid_normalized_query_skips_rewrite_and_uses_validated_evidence() -> None:
+    evidence_id = UUID("90000000-0000-0000-0000-000000000006")
+    normalized_query = "سياسة استخدام بطاقة الضوضاء البنفسجية في الردهة"
+    material_conditions = ("بطاقة الضوضاء البنفسجية", "الردهة")
+    semantic_query = "\n".join((normalized_query, *material_conditions))
+    retrieved = RetrievalResult(
+        query=semantic_query,
+        index_version_id=uuid4(),
+        evidence=(
+            RetrievalEvidence(
+                chunk_id=evidence_id,
+                document_id=uuid4(),
+                revision_id=uuid4(),
+                title="سياسة الردهة",
+                language="ar",
+                text=(
+                    "تستخدم بطاقة الضوضاء البنفسجية في الردهة "
+                    "بين الساعة السادسة والثامنة مساءً."
+                ),
+                score=0.41,
+                rank=1,
+            ),
+        ),
+        sufficient=True,
+        reason_code="evidence_found",
+    )
+    grounded = GroundedAnswer(
+        language="ar",
+        text="يسمح باستخدام البطاقة بين السادسة والثامنة مساءً.",
+        basis=AnswerBasis.KNOWLEDGE,
+        evidence_ids=(str(evidence_id),),
+    )
+    provider = FakeProvider([response(text=grounded.model_dump_json())])
+    retrieval = FakeRetrieval(retrieved)
+    service, llm_audit, tool_audit = orchestrator(provider, retrieval)
+    hybrid_routing = routing(
+        IntentCode.HOTEL_INFO,
+        decision=RoutingDecision.KNOWLEDGE_CANDIDATE,
+    ).model_copy(
+        update={
+            "normalized_knowledge_query": normalized_query,
+            "material_conditions": material_conditions,
+        }
+    )
+
+    result = asyncio.run(
+        service.handle(
+            envelope("متى أستخدم البطاقة الخاصة؟"),
+            hybrid_routing,
+        )
+    )
+
+    assert result.answer == grounded
+    assert retrieval.queries == [semantic_query]
+    assert [item.kind for item in provider.requests] == [
+        LLMRequestKind.FINAL_ANSWER
+    ]
+    assert len(llm_audit.records) == 1
+    assert tool_audit.records == []
+
+
+def test_weak_unrelated_evidence_is_rejected_before_answer_generation() -> None:
+    normalized_query = "موعد استخدام بطاقة الضوضاء البنفسجية"
+    material_conditions = ("بطاقة الضوضاء البنفسجية",)
+    semantic_query = "\n".join((normalized_query, *material_conditions))
+    unrelated = RetrievalResult(
+        query=semantic_query,
+        index_version_id=uuid4(),
+        evidence=(
+            RetrievalEvidence(
+                chunk_id=uuid4(),
+                document_id=uuid4(),
+                revision_id=uuid4(),
+                title="Accessibility",
+                language="en",
+                text="Accessible rooms have wider doors and adapted bathrooms.",
+                score=0.39,
+                rank=1,
+            ),
+        ),
+        sufficient=True,
+        reason_code="evidence_found",
+    )
+    provider = FakeProvider([])
+    retrieval = FakeRetrieval(unrelated)
+    service, llm_audit, tool_audit = orchestrator(provider, retrieval)
+    hybrid_routing = routing(
+        IntentCode.HOTEL_INFO,
+        decision=RoutingDecision.KNOWLEDGE_CANDIDATE,
+    ).model_copy(
+        update={
+            "normalized_knowledge_query": normalized_query,
+            "material_conditions": material_conditions,
+        }
+    )
+
+    result = asyncio.run(
+        service.handle(
+            envelope("متى أستخدم البطاقة الخاصة؟"),
+            hybrid_routing,
+        )
+    )
+
+    assert result.answer.basis is AnswerBasis.UNAVAILABLE
+    assert result.reason_code == "evidence_relevance_rejected"
+    assert provider.requests == []
+    assert llm_audit.records == []
+    assert tool_audit.records == []
