@@ -15,6 +15,7 @@ from hotel_bot.application.knowledge import (
     KnowledgeManagementService,
     KnowledgeRetrievalService,
 )
+from hotel_bot.application.llm import _validate_retrieval_evidence
 from hotel_bot.core.config import Settings
 from hotel_bot.domain.knowledge.enums import SourceFormat
 from hotel_bot.infrastructure.database import DatabaseManager
@@ -184,8 +185,9 @@ def test_document_versions_archive_restore_and_faiss_remain_consistent() -> None
                         document_id=target.id,
                         revision_id=version_two.id,
                         content=(
-                            "تتطلب الإقامة المشتركة وثائق الهوية الأصلية، ويجب حضور "
-                            "الضيفين معاً عند تسجيل الوصول. لا تحدد المعلومات المعتمدة عقوبة."
+                            "بالنسبة لإقامة شخصين غير متزوجين في غرفة مشتركة، تتطلب السياسة "
+                            "وثائق الهوية الأصلية، ويجب حضور الضيفين معاً عند تسجيل الوصول. "
+                            "لا تحدد المعلومات المعتمدة عقوبة."
                         ),
                     )
                     await management.approve_revision(
@@ -222,8 +224,12 @@ def test_document_versions_archive_restore_and_faiss_remain_consistent() -> None
                         SQLAlchemyKnowledgeRepository(session)
                     ).archive_document(admin_id=admin_id, document_id=target.id)
                 async with database.session() as session:
-                    archived_active = await SQLAlchemyKnowledgeRepository(session).get_active_index()
-                    archived_detail = await SQLAlchemyAdminRepository(session).get_knowledge(target.id)
+                    archived_active = await SQLAlchemyKnowledgeRepository(
+                        session
+                    ).get_active_index()
+                    archived_detail = await SQLAlchemyAdminRepository(session).get_knowledge(
+                        target.id
+                    )
                 assert archived_active is not None
                 assert all(
                     UUID(str(chunk.metadata["document_id"])) != target.id
@@ -245,9 +251,25 @@ def test_document_versions_archive_restore_and_faiss_remain_consistent() -> None
                         )
                         .limit(1)
                     )
-                    archived_detail = await SQLAlchemyAdminRepository(session).get_knowledge(target.id)
+                    archived_detail = await SQLAlchemyAdminRepository(session).get_knowledge(
+                        target.id
+                    )
+                    archived_result = await KnowledgeRetrievalService(
+                        SQLAlchemyKnowledgeRepository(session),
+                        embedder,
+                        store,
+                        top_k=100,
+                        minimum_score=0.05,
+                    ).retrieve("هل تسمحون بحجز غرفة لشاب وفتاة غير متزوجين؟")
                 assert archived_vectors is None
                 assert archived_detail.faiss_sync_status == "synchronized"
+                archived_validated = _validate_retrieval_evidence(
+                    archived_result,
+                    query="هل تسمحون بحجز غرفة لشاب وفتاة غير متزوجين؟",
+                    material_conditions=("شخصان غير متزوجين", "غرفة مشتركة"),
+                )
+                assert archived_validated.sufficient is False
+                assert archived_validated.evidence == ()
 
                 async with database.transaction() as session:
                     restored = await KnowledgeManagementService(
@@ -256,7 +278,9 @@ def test_document_versions_archive_restore_and_faiss_remain_consistent() -> None
                 assert restored.id == target.id
                 assert restored.current_revision_id == version_two.id
                 async with database.session() as session:
-                    restored_detail = await SQLAlchemyAdminRepository(session).get_knowledge(target.id)
+                    restored_detail = await SQLAlchemyAdminRepository(session).get_knowledge(
+                        target.id
+                    )
                 assert {item.id for item in restored_detail.revisions} == {
                     version_one.id,
                     version_two.id,
@@ -267,8 +291,26 @@ def test_document_versions_archive_restore_and_faiss_remain_consistent() -> None
                 _restore_index, restored_revisions = await rebuild()
                 assert version_two.id in restored_revisions
                 async with database.session() as session:
-                    restored_detail = await SQLAlchemyAdminRepository(session).get_knowledge(target.id)
+                    restored_detail = await SQLAlchemyAdminRepository(session).get_knowledge(
+                        target.id
+                    )
+                    restored_result = await KnowledgeRetrievalService(
+                        SQLAlchemyKnowledgeRepository(session),
+                        embedder,
+                        store,
+                        top_k=100,
+                        minimum_score=0.05,
+                    ).retrieve("هل تسمحون بحجز غرفة لشاب وفتاة غير متزوجين؟")
                 assert restored_detail.retrieval_eligible is True
+                restored_validated = _validate_retrieval_evidence(
+                    restored_result,
+                    query="هل تسمحون بحجز غرفة لشاب وفتاة غير متزوجين؟",
+                    material_conditions=("شخصان غير متزوجين", "غرفة مشتركة"),
+                )
+                assert restored_validated.sufficient is True
+                assert restored_validated.evidence[0].document_id == target.id
+                assert restored_validated.evidence[0].revision_id == version_two.id
+                assert "وثائق الهوية الأصلية" in restored_validated.evidence[0].text
 
                 async with database.transaction() as session:
                     reactivated = await KnowledgeManagementService(
@@ -334,7 +376,9 @@ def test_document_versions_archive_restore_and_faiss_remain_consistent() -> None
                     await session.execute(
                         delete(KnowledgeChunk).where(KnowledgeChunk.index_version_id.in_(index_ids))
                     )
-                    await session.execute(delete(IndexVersion).where(IndexVersion.id.in_(index_ids)))
+                    await session.execute(
+                        delete(IndexVersion).where(IndexVersion.id.in_(index_ids))
+                    )
                 if document_ids:
                     revision_ids = (
                         await session.scalars(
