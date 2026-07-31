@@ -64,6 +64,19 @@ class AdminApplicationRuntime:
             overlap_chars=self._settings.knowledge_chunk_overlap_chars,
         ).prepare_build(admin_id=admin_id, embedder=self._embedder)
 
+    async def prepare_knowledge_sync(
+        self, session: AsyncSession, *, admin_id: UUID
+    ) -> IndexBuildPlan | None:
+        repository = SQLAlchemyKnowledgeRepository(session)
+        if not await repository.list_approved_revisions():
+            await repository.retire_active_indexes(admin_id=admin_id)
+            return None
+        return await KnowledgeIndexService(
+            repository,
+            max_chars=self._settings.knowledge_chunk_max_chars,
+            overlap_chars=self._settings.knowledge_chunk_overlap_chars,
+        ).prepare_build(admin_id=admin_id, embedder=self._embedder)
+
     async def complete_reindex(self, database: DatabaseManager, plan: IndexBuildPlan) -> None:
         try:
             materialization = await asyncio.to_thread(

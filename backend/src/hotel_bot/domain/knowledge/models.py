@@ -108,6 +108,8 @@ class RetrievalEvidence(BaseModel):
     text: str
     score: float
     rank: int = Field(ge=1)
+    revision_version: int | None = Field(default=None, ge=1)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class RetrievalResult(BaseModel):

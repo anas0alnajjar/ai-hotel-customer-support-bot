@@ -84,9 +84,25 @@ class KnowledgeRepository(Protocol):
         self, *, admin_id: UUID, document_id: UUID, revision_id: UUID
     ) -> KnowledgeDocumentSnapshot: ...
 
+    async def edit_draft_revision(
+        self,
+        *,
+        admin_id: UUID,
+        document_id: UUID,
+        revision_id: UUID,
+        content: str,
+        checksum: str,
+    ) -> KnowledgeRevisionSnapshot: ...
+
     async def archive_document(
         self, *, admin_id: UUID, document_id: UUID
     ) -> KnowledgeDocumentSnapshot: ...
+
+    async def restore_document(
+        self, *, admin_id: UUID, document_id: UUID
+    ) -> KnowledgeDocumentSnapshot: ...
+
+    async def retire_active_indexes(self, *, admin_id: UUID) -> None: ...
 
     async def list_approved_revisions(self) -> tuple[KnowledgeRevisionSnapshot, ...]: ...
 
@@ -186,10 +202,32 @@ class KnowledgeManagementService:
             admin_id=admin_id, document_id=document_id, revision_id=revision_id
         )
 
+    async def edit_draft_revision(
+        self,
+        *,
+        admin_id: UUID,
+        document_id: UUID,
+        revision_id: UUID,
+        content: str,
+    ) -> KnowledgeRevisionSnapshot:
+        normalized_content = validate_content(content)
+        return await self._repository.edit_draft_revision(
+            admin_id=admin_id,
+            document_id=document_id,
+            revision_id=revision_id,
+            content=normalized_content,
+            checksum=_checksum(normalized_content),
+        )
+
     async def archive_document(
         self, *, admin_id: UUID, document_id: UUID
     ) -> KnowledgeDocumentSnapshot:
         return await self._repository.archive_document(admin_id=admin_id, document_id=document_id)
+
+    async def restore_document(
+        self, *, admin_id: UUID, document_id: UUID
+    ) -> KnowledgeDocumentSnapshot:
+        return await self._repository.restore_document(admin_id=admin_id, document_id=document_id)
 
 
 class KnowledgeIndexService:
@@ -377,6 +415,8 @@ class KnowledgeRetrievalService:
                     text=chunk.text,
                     score=score,
                     rank=len(evidence) + 1,
+                    revision_version=int(chunk.metadata["revision_version"]),
+                    metadata=dict(chunk.metadata),
                 )
             )
             if len(evidence) == self._top_k:

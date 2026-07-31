@@ -718,7 +718,7 @@ def test_weak_semantic_match_is_rewritten_and_retrieved_without_topic_rules() ->
     original_query = "أنا وخطيبتي بدنا غرفة وحدة، شو المطلوب؟"
     rewritten_query = "متطلبات حجز غرفة مشتركة لخطيبين"
     semantic_query = (
-        f"{rewritten_query}\nعلاقة خطوبة\nغرفة مشتركة\nمتطلبات الحجز"
+        f"{rewritten_query}\nعلاقة خطوبة\nغرفة مشتركة\nالوثائق المطلوبة"
     )
     weak = RetrievalResult(
         query=original_query,
@@ -770,9 +770,9 @@ def test_weak_semantic_match_is_rewritten_and_retrieved_without_topic_rules() ->
                     language="ar",
                     query=rewritten_query,
                     material_conditions=(
-                        "علاقة خطوبة",
-                        "غرفة مشتركة",
-                        "متطلبات الحجز",
+                            "علاقة خطوبة",
+                            "غرفة مشتركة",
+                            "الوثائق المطلوبة",
                     ),
                 ).model_dump_json()
             ),
@@ -1055,6 +1055,55 @@ def test_weak_unrelated_evidence_is_rejected_before_answer_generation() -> None:
     result = asyncio.run(
         service.handle(
             envelope("متى أستخدم البطاقة الخاصة؟"),
+            hybrid_routing,
+        )
+    )
+
+    assert result.answer.basis is AnswerBasis.UNAVAILABLE
+    assert result.reason_code == "evidence_relevance_rejected"
+    assert provider.requests == []
+    assert llm_audit.records == []
+    assert tool_audit.records == []
+
+
+def test_high_scoring_unrelated_policy_is_not_accepted_as_remaining_best_result() -> None:
+    normalized_query = "سياسة ومتطلبات إقامة شخصين غير متزوجين في غرفة مشتركة"
+    material_conditions = ("شخصان غير متزوجين", "غرفة مشتركة")
+    semantic_query = "\n".join((normalized_query, *material_conditions))
+    unrelated = RetrievalResult(
+        query=semantic_query,
+        index_version_id=uuid4(),
+        evidence=(
+            RetrievalEvidence(
+                chunk_id=uuid4(),
+                document_id=uuid4(),
+                revision_id=uuid4(),
+                title="سياسة الحيوانات الأليفة",
+                language="ar",
+                text="يسمح باصطحاب الحيوانات الأليفة إلى غرف محددة بعد موافقة مسبقة.",
+                score=0.82,
+                rank=1,
+            ),
+        ),
+        sufficient=True,
+        reason_code="evidence_found",
+    )
+    provider = FakeProvider([])
+    retrieval = FakeRetrieval(unrelated)
+    service, llm_audit, tool_audit = orchestrator(provider, retrieval)
+    hybrid_routing = routing(
+        IntentCode.HOTEL_INFO,
+        decision=RoutingDecision.KNOWLEDGE_CANDIDATE,
+    ).model_copy(
+        update={
+            "normalized_knowledge_query": normalized_query,
+            "material_conditions": material_conditions,
+        }
+    )
+
+    result = asyncio.run(
+        service.handle(
+            envelope("هل تسمحون بحجز غرفة لشاب وفتاة غير متزوجين؟"),
             hybrid_routing,
         )
     )

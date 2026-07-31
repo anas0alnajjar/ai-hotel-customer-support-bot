@@ -2,9 +2,11 @@
 
 import hashlib
 import json
+import os
 from pathlib import Path
 from typing import Any, Protocol
 
+from hotel_bot.application.intent_routing import HYBRID_ROUTER_VERSION
 from hotel_bot.domain.admin.errors import AdminValidationError
 from hotel_bot.domain.admin.models import AdminPrincipal, EvaluationAdminItem
 
@@ -68,12 +70,24 @@ class OfflineEvaluationService:
             **operational,
         }
         system_versions = {
+            "run_name": "Frozen offline hotel-support baseline",
+            "run_mode": "offline",
+            "baseline_type": "frozen_baseline",
             "application": app_version,
+            "git_commit": os.getenv("APP_GIT_COMMIT") or "not_recorded",
+            "router": HYBRID_ROUTER_VERSION,
             "intent_classifier": intent.get("classifier_version"),
+            "intent_dataset": intent.get("dataset_version"),
             "intent_report": intent.get("report_version"),
             "retrieval_dataset": retrieval.get("dataset_version"),
             "embedding_model": retrieval.get("embedding_model"),
             "llm_model": llm_model,
+            "llm_called": False,
+            "intent_sample_count": intent.get("sample_count"),
+            "retrieval_sample_count": retrieval.get("sample_count"),
+            "evaluator_sample_count": operational["answer_quality"][
+                "evaluator_sample_count"
+            ],
         }
         return await self._repository.create_evaluation(
             dataset_version=dataset_version,

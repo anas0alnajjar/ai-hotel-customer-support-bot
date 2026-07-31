@@ -3,7 +3,7 @@
 import secrets
 from collections.abc import Sequence
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from sqlalchemy import and_, exists, func, or_, select
@@ -47,7 +47,7 @@ from hotel_bot.domain.hotel.enums import (
 )
 from hotel_bot.domain.hotel.policies import validate_status_transition
 from hotel_bot.domain.hotel.security import hash_verification_value
-from hotel_bot.domain.knowledge.enums import KnowledgeStatus, SourceFormat
+from hotel_bot.domain.knowledge.enums import IndexStatus, KnowledgeStatus, SourceFormat
 from hotel_bot.persistence.enums import (
     ActorType,
     AdminRole,
@@ -67,6 +67,8 @@ from hotel_bot.persistence.models import (
     EvaluationRun,
     Feedback,
     Guest,
+    IndexVersion,
+    KnowledgeChunk,
     KnowledgeDocument,
     KnowledgeRevision,
     LLMRun,
@@ -431,6 +433,78 @@ class SQLAlchemyAdminRepository:
                 .order_by(KnowledgeRevision.version.desc())
             )
         ).all()
+        approval_events = (
+            await self._session.scalars(
+                select(AuditEvent)
+                .where(
+                    AuditEvent.resource_type == "knowledge_document",
+                    AuditEvent.resource_id == document_id,
+                    AuditEvent.action.in_(
+                        (
+                            "knowledge_revision_approved",
+                            "knowledge_revision_reactivated",
+                        )
+                    ),
+                )
+                .order_by(AuditEvent.created_at, AuditEvent.id)
+            )
+        ).all()
+        approvals: dict[UUID, tuple[datetime, UUID | None]] = {}
+        for event in approval_events:
+            value = (event.metadata_redacted or {}).get("revision_id")
+            try:
+                revision_id = UUID(str(value))
+            except (TypeError, ValueError):
+                continue
+            approvals.setdefault(revision_id, (event.created_at, event.actor_id))
+        active_index = await self._session.scalar(
+            select(IndexVersion)
+            .where(IndexVersion.status == IndexStatus.ACTIVE)
+            .order_by(IndexVersion.activated_at.desc(), IndexVersion.id.desc())
+            .limit(1)
+        )
+        indexed_revision_ids: set[UUID] = set()
+        if active_index is not None:
+            indexed_revision_ids = set(
+                await self._session.scalars(
+                    select(KnowledgeChunk.revision_id)
+                    .join(KnowledgeRevision, KnowledgeRevision.id == KnowledgeChunk.revision_id)
+                    .where(
+                        KnowledgeChunk.index_version_id == active_index.id,
+                        KnowledgeRevision.document_id == document_id,
+                    )
+                    .distinct()
+                )
+            )
+        build_in_progress = bool(
+            await self._session.scalar(
+                select(func.count(IndexVersion.id)).where(
+                    IndexVersion.status == IndexStatus.BUILDING
+                )
+            )
+        )
+        expected_revision_ids = (
+            {document.current_revision_id}
+            if (
+                KnowledgeStatus(document.status) is KnowledgeStatus.APPROVED
+                and document.current_revision_id is not None
+            )
+            else set()
+        )
+        synchronized = indexed_revision_ids == expected_revision_ids
+        faiss_sync_status: Literal["synchronized", "needs_rebuild", "building"] = (
+            "building"
+            if build_in_progress
+            else "synchronized"
+            if synchronized
+            else "needs_rebuild"
+        )
+        retrieval_eligible = bool(
+            KnowledgeStatus(document.status) is KnowledgeStatus.APPROVED
+            and document.current_revision_id is not None
+            and document.current_revision_id in indexed_revision_ids
+            and synchronized
+        )
         return KnowledgeAdminDetail(
             document=self._knowledge_item(document, len(revisions)),
             revisions=tuple(
@@ -441,9 +515,28 @@ class SQLAlchemyAdminRepository:
                     checksum=item.checksum,
                     created_by=item.created_by,
                     created_at=item.created_at,
+                    status=(
+                        "approved"
+                        if item.id == document.current_revision_id
+                        else "historical"
+                        if item.id in approvals
+                        else "draft"
+                    ),
+                    approved_at=(approvals[item.id][0] if item.id in approvals else None),
+                    approved_by=(approvals[item.id][1] if item.id in approvals else None),
+                    effective=item.id == document.current_revision_id,
+                    indexed_in_faiss=item.id in indexed_revision_ids,
+                    editable=(
+                        item.id not in approvals
+                        and item.id != document.current_revision_id
+                        and KnowledgeStatus(document.status) is not KnowledgeStatus.ARCHIVED
+                    ),
                 )
                 for item in revisions
             ),
+            retrieval_eligible=retrieval_eligible,
+            faiss_sync_status=faiss_sync_status,
+            active_index_id=active_index.id if active_index else None,
         )
 
     async def list_service_requests(

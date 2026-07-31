@@ -17,8 +17,19 @@ export interface Escalation { id: string; reason: string; status: string; assign
 export interface ConversationDetail { conversation: Conversation; messages: Message[]; tool_events: ToolEvent[]; feedback: Feedback[]; escalations: Escalation[] }
 
 export interface Knowledge { id: string; title: string; language: string; source_format: string; status: string; current_revision_id: string | null; revision_count: number; created_at: string; updated_at: string }
-export interface KnowledgeRevision { id: string; version: number; content: string; checksum: string; created_by: string | null; created_at: string }
-export interface KnowledgeDetail { document: Knowledge; revisions: KnowledgeRevision[] }
+export interface KnowledgeRevision {
+  id: string; version: number; content: string; checksum: string
+  created_by: string | null; created_at: string
+  status: 'draft' | 'approved' | 'historical'
+  approved_at: string | null; approved_by: string | null
+  effective: boolean; indexed_in_faiss: boolean; editable: boolean
+}
+export interface KnowledgeDetail {
+  document: Knowledge; revisions: KnowledgeRevision[]
+  retrieval_eligible: boolean
+  faiss_sync_status: 'synchronized' | 'needs_rebuild' | 'building'
+  active_index_id: string | null
+}
 
 export interface ServiceRequest { id: string; tracking_code: string; request_type: string; category: string; room_number: string; description: string; urgency: string; status: string; created_at: string; updated_at: string; completed_at: string | null }
 export interface Evaluation { id: string; dataset_version: string; system_versions: Record<string, unknown>; metrics: Record<string, unknown> | null; status: string; started_at: string | null; finished_at: string | null; error_summary: string | null; created_at: string }

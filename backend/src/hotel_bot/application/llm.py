@@ -183,7 +183,6 @@ ACTION_TOOL_BY_INTENT: dict[IntentCode, str] = {
     IntentCode.SERVICE_REQUEST_STATUS: "get_service_request_status",
 }
 KNOWLEDGE_QUERY_REWRITE_TRIGGER_SCORE = 0.55
-KNOWLEDGE_STRONG_SEMANTIC_SCORE = KNOWLEDGE_QUERY_REWRITE_TRIGGER_SCORE
 GENERIC_RETRIEVAL_TERMS = frozenset(
     {
         "hotel",
@@ -191,6 +190,17 @@ GENERIC_RETRIEVAL_TERMS = frozenset(
         "guests",
         "information",
         "service",
+        "room",
+        "rooms",
+        "booking",
+        "reservation",
+        "reservations",
+        "policy",
+        "policies",
+        "rule",
+        "rules",
+        "requirement",
+        "requirements",
         "فندق",
         "الفندق",
         "نزيل",
@@ -198,6 +208,23 @@ GENERIC_RETRIEVAL_TERMS = frozenset(
         "النزلاء",
         "معلومات",
         "خدمة",
+        "الخدمة",
+        "خدمات",
+        "غرفة",
+        "الغرفة",
+        "غرف",
+        "الغرف",
+        "حجز",
+        "الحجز",
+        "حجوزات",
+        "سياسة",
+        "السياسة",
+        "سياسات",
+        "قاعدة",
+        "قواعد",
+        "شرط",
+        "شروط",
+        "متطلبات",
     }
 )
 
@@ -379,11 +406,7 @@ def _validate_retrieval_evidence(
             for tokens in condition_tokens
             if tokens
         )
-        if (
-            evidence.score < KNOWLEDGE_STRONG_SEMANTIC_SCORE
-            and lexical_overlap == 0
-            and condition_coverage == 0
-        ):
+        if lexical_overlap == 0 and condition_coverage == 0:
             continue
         ranked.append(
             (

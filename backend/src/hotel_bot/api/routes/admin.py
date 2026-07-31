@@ -907,6 +907,7 @@ async def approve_knowledge(
     document_id: UUID,
     revision_id: UUID,
     request: Request,
+    background_tasks: BackgroundTasks,
     database: Annotated[DatabaseManager, Depends(get_database_manager)],
     runtime: Annotated[AdminApplicationRuntime, Depends(get_admin_runtime)],
     settings: Annotated[Settings, Depends(get_settings)],
@@ -929,10 +930,15 @@ async def approve_knowledge(
                 document_id=document_id,
                 revision_id=revision_id,
             )
+            sync_plan = await runtime.prepare_knowledge_sync(
+                session, admin_id=principal.id
+            )
     except KnowledgeError as exc:
         raise HTTPException(status_code=422, detail=exc.code) from exc
     if document.current_revision_id is None:
         raise HTTPException(status_code=500, detail="knowledge_approval_invariant_failed")
+    if sync_plan is not None:
+        background_tasks.add_task(runtime.complete_reindex, database, sync_plan)
     return KnowledgeApprovalResponse(
         document_id=document.id,
         current_revision_id=document.current_revision_id,
@@ -944,6 +950,7 @@ async def approve_knowledge(
 async def archive_knowledge(
     document_id: UUID,
     request: Request,
+    background_tasks: BackgroundTasks,
     database: Annotated[DatabaseManager, Depends(get_database_manager)],
     runtime: Annotated[AdminApplicationRuntime, Depends(get_admin_runtime)],
     settings: Annotated[Settings, Depends(get_settings)],
@@ -962,9 +969,98 @@ async def archive_knowledge(
             await KnowledgeManagementService(
                 SQLAlchemyKnowledgeRepository(session)
             ).archive_document(admin_id=principal.id, document_id=document_id)
+            sync_plan = await runtime.prepare_knowledge_sync(
+                session, admin_id=principal.id
+            )
     except KnowledgeError as exc:
         raise HTTPException(status_code=422, detail=exc.code) from exc
+    if sync_plan is not None:
+        background_tasks.add_task(runtime.complete_reindex, database, sync_plan)
     return Response(status_code=204)
+
+
+@router.post(
+    "/knowledge/{document_id}/restore",
+    response_model=KnowledgeMutationResponse,
+)
+async def restore_knowledge(
+    document_id: UUID,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    database: Annotated[DatabaseManager, Depends(get_database_manager)],
+    runtime: Annotated[AdminApplicationRuntime, Depends(get_admin_runtime)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    principal: Annotated[AdminPrincipal, Depends(current_admin)],
+) -> KnowledgeMutationResponse:
+    await _authorize(
+        principal,
+        ADMIN_ONLY,
+        request=request,
+        database=database,
+        runtime=runtime,
+        settings=settings,
+    )
+    try:
+        async with database.transaction() as session:
+            document = await KnowledgeManagementService(
+                SQLAlchemyKnowledgeRepository(session)
+            ).restore_document(admin_id=principal.id, document_id=document_id)
+            sync_plan = await runtime.prepare_knowledge_sync(
+                session, admin_id=principal.id
+            )
+    except KnowledgeError as exc:
+        raise HTTPException(status_code=422, detail=exc.code) from exc
+    if sync_plan is not None:
+        background_tasks.add_task(runtime.complete_reindex, database, sync_plan)
+    return KnowledgeMutationResponse(
+        document_id=document.id,
+        revision_id=document.current_revision_id,
+        version=None,
+        status=document.status,
+    )
+
+
+@router.patch(
+    "/knowledge/{document_id}/revisions/{revision_id}",
+    response_model=KnowledgeMutationResponse,
+)
+async def edit_knowledge_draft(
+    document_id: UUID,
+    revision_id: UUID,
+    payload: KnowledgeUpdateRequest,
+    request: Request,
+    database: Annotated[DatabaseManager, Depends(get_database_manager)],
+    runtime: Annotated[AdminApplicationRuntime, Depends(get_admin_runtime)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    principal: Annotated[AdminPrincipal, Depends(current_admin)],
+) -> KnowledgeMutationResponse:
+    await _authorize(
+        principal,
+        ADMIN_ONLY,
+        request=request,
+        database=database,
+        runtime=runtime,
+        settings=settings,
+    )
+    try:
+        async with database.transaction() as session:
+            revision = await KnowledgeManagementService(
+                SQLAlchemyKnowledgeRepository(session)
+            ).edit_draft_revision(
+                admin_id=principal.id,
+                document_id=document_id,
+                revision_id=revision_id,
+                content=payload.content,
+            )
+            detail = await SQLAlchemyAdminRepository(session).get_knowledge(document_id)
+    except KnowledgeError as exc:
+        raise HTTPException(status_code=422, detail=exc.code) from exc
+    return KnowledgeMutationResponse(
+        document_id=document_id,
+        revision_id=revision.id,
+        version=revision.version,
+        status=detail.document.status,
+    )
 
 
 @router.post("/knowledge/reindex", response_model=ReindexResponse, status_code=202)

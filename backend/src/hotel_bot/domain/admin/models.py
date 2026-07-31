@@ -1,7 +1,7 @@
 """Typed administration projections independent from HTTP and SQLAlchemy."""
 
 from datetime import date, datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
@@ -139,6 +139,12 @@ class KnowledgeRevisionAdminItem(BaseModel):
     checksum: str
     created_by: UUID | None
     created_at: datetime
+    status: Literal["draft", "approved", "historical"]
+    approved_at: datetime | None
+    approved_by: UUID | None
+    effective: bool
+    indexed_in_faiss: bool
+    editable: bool
 
 
 class KnowledgeAdminItem(BaseModel):
@@ -160,6 +166,9 @@ class KnowledgeAdminDetail(BaseModel):
 
     document: KnowledgeAdminItem
     revisions: tuple[KnowledgeRevisionAdminItem, ...]
+    retrieval_eligible: bool
+    faiss_sync_status: Literal["synchronized", "needs_rebuild", "building"]
+    active_index_id: UUID | None
 
 
 class ServiceRequestAdminItem(BaseModel):

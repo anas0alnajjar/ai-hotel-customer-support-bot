@@ -208,11 +208,26 @@ def test_admin_api_auth_rbac_masking_and_management_journey() -> None:
         database = DatabaseManager(settings)
         try:
             async with database.transaction() as session:
-                if index_id is not None:
-                    await session.execute(
-                        delete(KnowledgeChunk).where(KnowledgeChunk.index_version_id == index_id)
+                created_index_ids = set(
+                    await session.scalars(
+                        select(AuditEvent.resource_id).where(
+                            AuditEvent.actor_id == ids["admin"],
+                            AuditEvent.action == "knowledge_index_build_started",
+                            AuditEvent.resource_id.is_not(None),
+                        )
                     )
-                    await session.execute(delete(IndexVersion).where(IndexVersion.id == index_id))
+                )
+                if index_id is not None:
+                    created_index_ids.add(index_id)
+                if created_index_ids:
+                    await session.execute(
+                        delete(KnowledgeChunk).where(
+                            KnowledgeChunk.index_version_id.in_(created_index_ids)
+                        )
+                    )
+                    await session.execute(
+                        delete(IndexVersion).where(IndexVersion.id.in_(created_index_ids))
+                    )
                 if previously_active:
                     await session.execute(
                         update(IndexVersion)
@@ -511,6 +526,13 @@ def test_admin_api_auth_rbac_masking_and_management_journey() -> None:
                 )
                 assert knowledge.status_code == 201
                 document_id = UUID(knowledge.json()["document_id"])
+                version_one_id = UUID(knowledge.json()["revision_id"])
+
+                first_approval = client.post(
+                    f"/api/v1/admin/knowledge/{document_id}/revisions/{version_one_id}/approve",
+                    headers=headers(admin_token, "knowledge-approve-v1"),
+                )
+                assert first_approval.status_code == 200
 
                 revision = client.patch(
                     f"/api/v1/admin/knowledge/{document_id}",
@@ -525,12 +547,35 @@ def test_admin_api_auth_rbac_masking_and_management_journey() -> None:
                 )
                 assert revision.status_code == 200
                 revision_id = UUID(revision.json()["revision_id"])
+                edited_draft = client.patch(
+                    f"/api/v1/admin/knowledge/{document_id}/revisions/{revision_id}",
+                    json={
+                        "content": (
+                            "Integration late checkout is available until 3:30 PM only after "
+                            "front desk approval. This is the editable draft version."
+                        )
+                    },
+                    headers=headers(admin_token, "knowledge-edit-draft"),
+                )
+                assert edited_draft.status_code == 200
                 approval = client.post(
                     f"/api/v1/admin/knowledge/{document_id}/revisions/{revision_id}/approve",
                     headers=headers(admin_token, "knowledge-approve"),
                 )
                 assert approval.status_code == 200
                 assert approval.json()["status"] == "approved"
+                detail = client.get(
+                    f"/api/v1/admin/knowledge/{document_id}",
+                    headers=headers(admin_token, "knowledge-detail-versioned"),
+                )
+                assert detail.status_code == 200
+                assert detail.json()["document"]["current_revision_id"] == str(revision_id)
+                revision_states = {
+                    item["id"]: item for item in detail.json()["revisions"]
+                }
+                assert revision_states[str(revision_id)]["status"] == "approved"
+                assert revision_states[str(version_one_id)]["status"] == "historical"
+                assert revision_states[str(version_one_id)]["editable"] is False
 
                 reindex = client.post(
                     "/api/v1/admin/knowledge/reindex",
@@ -538,6 +583,35 @@ def test_admin_api_auth_rbac_masking_and_management_journey() -> None:
                 )
                 assert reindex.status_code == 202
                 index_id = UUID(reindex.json()["index_version_id"])
+
+                archived = client.delete(
+                    f"/api/v1/admin/knowledge/{document_id}",
+                    headers=headers(admin_token, "knowledge-archive"),
+                )
+                assert archived.status_code == 204
+                archived_detail = client.get(
+                    f"/api/v1/admin/knowledge/{document_id}",
+                    headers=headers(admin_token, "knowledge-detail-archived"),
+                )
+                assert archived_detail.json()["document"]["status"] == "archived"
+                assert archived_detail.json()["retrieval_eligible"] is False
+                assert archived_detail.json()["document"]["current_revision_id"] == str(revision_id)
+
+                restored = client.post(
+                    f"/api/v1/admin/knowledge/{document_id}/restore",
+                    headers=headers(admin_token, "knowledge-restore"),
+                )
+                assert restored.status_code == 200
+                assert restored.json()["document_id"] == str(document_id)
+                assert restored.json()["revision_id"] == str(revision_id)
+                restored_detail = client.get(
+                    f"/api/v1/admin/knowledge/{document_id}",
+                    headers=headers(admin_token, "knowledge-detail-restored"),
+                )
+                assert restored_detail.json()["document"]["status"] == "approved"
+                assert {
+                    item["id"] for item in restored_detail.json()["revisions"]
+                } == {str(version_one_id), str(revision_id)}
 
                 service_list = client.get(
                     "/api/v1/admin/service-requests?status=open",

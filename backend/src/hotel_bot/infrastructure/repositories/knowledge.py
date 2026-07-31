@@ -55,6 +55,30 @@ class SQLAlchemyKnowledgeRepository:
             )
         return admin
 
+    async def _approved_revision_ids(self, document_id: UUID) -> set[UUID]:
+        events = (
+            await self._session.scalars(
+                select(AuditEvent).where(
+                    AuditEvent.resource_type == "knowledge_document",
+                    AuditEvent.resource_id == document_id,
+                    AuditEvent.action.in_(
+                        (
+                            "knowledge_revision_approved",
+                            "knowledge_revision_reactivated",
+                        )
+                    ),
+                )
+            )
+        ).all()
+        approved: set[UUID] = set()
+        for event in events:
+            value = (event.metadata_redacted or {}).get("revision_id")
+            try:
+                approved.add(UUID(str(value)))
+            except (TypeError, ValueError):
+                continue
+        return approved
+
     async def create_document(
         self,
         *,
@@ -167,17 +191,89 @@ class SQLAlchemyKnowledgeRepository:
             raise KnowledgeValidationError(
                 "knowledge_revision_unavailable", "knowledge revision cannot be approved"
             )
+        approved_revision_ids = await self._approved_revision_ids(document_id)
+        previous_revision_id = document.current_revision_id
         document.current_revision_id = revision_id
         document.status = KnowledgeStatus.APPROVED
         self._audit(
             admin_id,
-            "knowledge_revision_approved",
+            (
+                "knowledge_revision_reactivated"
+                if revision_id in approved_revision_ids
+                else "knowledge_revision_approved"
+            ),
+            "knowledge_document",
+            document_id,
+            {
+                "revision_id": str(revision_id),
+                "version": revision.version,
+                "previous_revision_id": (
+                    str(previous_revision_id) if previous_revision_id else None
+                ),
+            },
+        )
+        await self._session.flush()
+        return self._map_document(document)
+
+    async def edit_draft_revision(
+        self,
+        *,
+        admin_id: UUID,
+        document_id: UUID,
+        revision_id: UUID,
+        content: str,
+        checksum: str,
+    ) -> KnowledgeRevisionSnapshot:
+        await self._require_admin(admin_id)
+        document = await self._session.scalar(
+            select(KnowledgeDocument)
+            .where(KnowledgeDocument.id == document_id)
+            .with_for_update()
+            .limit(1)
+        )
+        revision = await self._session.scalar(
+            select(KnowledgeRevision)
+            .where(
+                KnowledgeRevision.id == revision_id,
+                KnowledgeRevision.document_id == document_id,
+            )
+            .with_for_update()
+            .limit(1)
+        )
+        if (
+            document is None
+            or revision is None
+            or document.status is KnowledgeStatus.ARCHIVED
+            or revision_id == document.current_revision_id
+            or revision_id in await self._approved_revision_ids(document_id)
+        ):
+            raise KnowledgeValidationError(
+                "knowledge_revision_immutable",
+                "approved and historical revisions cannot be edited",
+            )
+        duplicate = await self._session.scalar(
+            select(KnowledgeRevision.id).where(
+                KnowledgeRevision.document_id == document_id,
+                KnowledgeRevision.checksum == checksum,
+                KnowledgeRevision.id != revision_id,
+            )
+        )
+        if duplicate is not None:
+            raise KnowledgeValidationError(
+                "knowledge_revision_duplicate",
+                "draft content duplicates another revision",
+            )
+        revision.content = content
+        revision.checksum = checksum
+        self._audit(
+            admin_id,
+            "knowledge_revision_draft_edited",
             "knowledge_document",
             document_id,
             {"revision_id": str(revision_id), "version": revision.version},
         )
         await self._session.flush()
-        return self._map_document(document)
+        return self._map_revision(revision, document)
 
     async def archive_document(
         self, *, admin_id: UUID, document_id: UUID
@@ -203,6 +299,60 @@ class SQLAlchemyKnowledgeRepository:
         )
         await self._session.flush()
         return self._map_document(document)
+
+    async def restore_document(
+        self, *, admin_id: UUID, document_id: UUID
+    ) -> KnowledgeDocumentSnapshot:
+        await self._require_admin(admin_id)
+        document = await self._session.scalar(
+            select(KnowledgeDocument)
+            .where(KnowledgeDocument.id == document_id)
+            .with_for_update()
+            .limit(1)
+        )
+        if document is None or document.status is not KnowledgeStatus.ARCHIVED:
+            raise KnowledgeValidationError(
+                "knowledge_document_not_archived",
+                "only an archived knowledge document can be restored",
+            )
+        document.status = (
+            KnowledgeStatus.APPROVED
+            if document.current_revision_id is not None
+            else KnowledgeStatus.DRAFT
+        )
+        self._audit(
+            admin_id,
+            "knowledge_document_restored",
+            "knowledge_document",
+            document_id,
+            {
+                "current_revision_id": (
+                    str(document.current_revision_id) if document.current_revision_id else None
+                )
+            },
+        )
+        await self._session.flush()
+        return self._map_document(document)
+
+    async def retire_active_indexes(self, *, admin_id: UUID) -> None:
+        await self._require_admin(admin_id)
+        active = (
+            await self._session.scalars(
+                select(IndexVersion)
+                .where(IndexVersion.status == IndexStatus.ACTIVE)
+                .with_for_update()
+            )
+        ).all()
+        for version in active:
+            version.status = IndexStatus.RETIRED
+            self._audit(
+                admin_id,
+                "knowledge_index_retired_no_eligible_documents",
+                "index_version",
+                version.id,
+                None,
+            )
+        await self._session.flush()
 
     async def list_approved_revisions(self) -> tuple[KnowledgeRevisionSnapshot, ...]:
         rows = (
@@ -272,6 +422,20 @@ class SQLAlchemyKnowledgeRepository:
         if artifact.dimension != target.dimension or artifact.vector_count != len(chunks):
             raise KnowledgeValidationError(
                 "index_artifact_mismatch", "index artifact does not match build metadata"
+            )
+        eligible_revision_ids = set(
+            await self._session.scalars(
+                select(KnowledgeDocument.current_revision_id).where(
+                    KnowledgeDocument.status == KnowledgeStatus.APPROVED,
+                    KnowledgeDocument.current_revision_id.is_not(None),
+                )
+            )
+        )
+        materialized_revision_ids = {chunk.revision_id for chunk in chunks}
+        if materialized_revision_ids != eligible_revision_ids:
+            raise KnowledgeValidationError(
+                "index_build_stale",
+                "knowledge lifecycle changed while the index was being built",
             )
         for chunk in chunks:
             self._session.add(

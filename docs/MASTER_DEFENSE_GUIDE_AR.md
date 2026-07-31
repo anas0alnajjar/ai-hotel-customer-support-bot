@@ -14,7 +14,7 @@
 | مكونات الذكاء الاصطناعي | Gemini، ومصنف Naive Bayes ثنائي اللغة، وSentence Transformers، وFAISS، والاسترجاع المعزز بالتوليد (RAG) |
 | التشغيل | Docker Compose، وحاويات Backend وFrontend وMySQL، وخدمات migration/bootstrap، وخيار Prometheus |
 | الفندق | فندق نور الشام الكبير، وهو فندق وبيانات تشغيلية افتراضية لأغراض المشروع |
-| النسخة الموثقة | Git commit `82af92bc0add4b3fe93727f5223adc29a51da920` على `main` |
+| النسخة الموثقة | الوثيقة محدثة داخل الالتزام الذي يحتويها على `main`؛ يُثبت الالتزام المنشور بأمر `git rev-parse HEAD` ولا تُنسب تلقائياً إلى نسخة production قبل التحقق اليدوي |
 
 مصادر الإثبات الأساسية: مصنع تطبيق FastAPI في [`backend/src/hotel_bot/main.py`](../backend/src/hotel_bot/main.py)، وتركيب Telegram الإنتاجي في [`backend/src/hotel_bot/infrastructure/telegram_runtime.py`](../backend/src/hotel_bot/infrastructure/telegram_runtime.py)، واعتماديات Backend في [`backend/pyproject.toml`](../backend/pyproject.toml)، واعتماديات Frontend في [`frontend/package.json`](../frontend/package.json)، وتشغيل Hostinger في [`compose.hostinger.yaml`](../compose.hostinger.yaml).
 
@@ -80,7 +80,7 @@
 2. تصنيف عشر نوايا عربية وإنكليزية باستخدام baseline قابل لإعادة الإنتاج.
 3. التفريق العام بين طلب تنفيذ صريح وسؤال معلوماتي عبر fast paths ومصنف وبوابة ثقة ومحلل دلالي استشاري عند الحاجة فقط.
 4. حفظ حالة محادثة منظمة وجمع المعاملات على عدة رسائل.
-5. إدارة دورة حياة مستندات المعرفة: مسودة، نسخة، اعتماد، أرشفة، وإعادة فهرسة.
+5. إدارة دورة حياة مستندات المعرفة: أب ثابت، نسخ متعددة، مسودة قابلة للتحرير، اعتماد نسخة فعالة واحدة، أرشفة، استعادة، وإعادة فهرسة.
 6. بناء فهرس FAISS غير قابل للتعديل لكل إصدار، مع manifest وchecksum.
 7. صياغة جواب Gemini ضمن مخطط `GroundedAnswer` والتحقق منه بعد الاستجابة.
 8. تنفيذ ست أدوات محاكية ضمن allow-list ومخططات ومدد وتأكيد وتدقيق.
@@ -405,27 +405,27 @@ flowchart TD
 
 ## 12.1 دورة الحياة الفعلية
 
-1. ينشئ Admin مستنداً بعنوان ولغة وصيغة `plain_text` ومحتوى.
-2. ينشأ `knowledge_documents` بحالة `draft` و`knowledge_revisions` بنسخة checksum.
-3. يعتمد Admin نسخة محددة؛ تصبح حالة المستند `approved` و`current_revision_id` يشير إليها.
-4. يضغط Admin «إعادة بناء FAISS». ينشئ الخادم `index_versions` بحالة `building`.
-5. `list_approved_revisions` يجلب فقط النسخ الحالية لمستندات `approved`.
-6. `chunk_text` ينظف النص ويجزئه بحد 800 حرف وتداخل 120 افتراضياً.
-7. كل قطعة تحمل `document_id`, `title`, `language`, `revision_version`.
-8. نص التضمين هو `title + newline + chunk text`، كي يشارك العنوان في الدلالة.
-9. Sentence Transformer ينتج متجهاً 384 بعد normalization.
-10. FAISS يبني `IndexFlatIP` ويحفظ `index.faiss` و`manifest.json` وchecksum في مجلد immutable.
-11. بعد التحقق من artifact، تُخزن القطع في MySQL ويصبح الإصدار `active`، وتُحال الإصدارات النشطة السابقة إلى retired وفق repository.
-12. عند السؤال يُضمّن query، ويبحث FAISS في ما يصل إلى `top_k*3` ثم يرشح ما دون `0.35` ويعيد حتى خمس قطع.
-13. إذا كان أقوى score أقل من `0.55`، يطلب النظام من Gemini إعادة صياغة دلالية منظمة تحفظ الشروط المادية، ثم يعيد البحث مرة واحدة.
-14. إذا كان الاسترجاع النهائي كافياً، يرسل الأدلة مع معرفاتها إلى prompt ويقبل Gemini فقط إذا أعاد `basis=knowledge` ومعرفات ضمن allow-list.
-15. يسجل `llm_runs` نوع الطلب، والمزود، والنموذج، ونسخة prompt، والـtokens، والمدة، والحالة، والتكلفة التقديرية، وrequest ID إن توفر.
+1. ينشئ Admin رأس مستند ثابتاً في `knowledge_documents` ونسخة أولى في `knowledge_revisions`؛ لا تمثل النسخة الجديدة مستنداً مكرراً.
+2. النسخة الجديدة تبدأ كمسودة لأنها لا تحمل حدث اعتماد في `audit_events` ولا يساوي معرّفها `current_revision_id`.
+3. يمكن تعديل المسودة نفسها حتى الاعتماد؛ أما النسخة الفعالة أو نسخة سبق اعتمادها فهي immutable وتبقى للقراءة التاريخية.
+4. عند الاعتماد يصبح `current_revision_id` هو معرّف النسخة المختارة وتكون حالة الأب `approved`. هذا هو التعريف الوحيد للنسخة الفعالة، لذلك لا توجد نسختان فعالتان معاً.
+5. النسخ الأخرى التي لها حدث اعتماد تصبح historical، والنسخ غير المعتمدة تبقى draft. لا حاجة إلى migration لأن المخطط الحالي مع سجل التدقيق يحمل هذه الدلالة.
+6. الاعتماد، وإعادة اعتماد نسخة سابقة، والأرشفة، والاستعادة تطلق مزامنة FAISS في الخلفية. إنشاء/تحرير مسودة لا يغير corpus الفعال ولا يحتاج بناءاً.
+7. `list_approved_revisions` يجلب فقط `current_revision_id` لمستندات الأب ذات الحالة `approved`; لذلك draft وhistorical وarchived مستبعدة.
+8. `chunk_text` ينظف النص ويجزئه بحد 800 حرف وتداخل 120 افتراضياً، وتحمل القطعة `document_id`, `revision_id`, `revision_version`, `title`, `language` وmetadata قابلة للتتبع.
+9. نص التضمين هو `title + newline + chunk text`، وSentence Transformer ينتج متجهاً 384 بعد normalization.
+10. FAISS يبني `IndexFlatIP` ويحفظ `index.faiss` و`manifest.json` وchecksum في مجلد immutable مؤقت ثم ينشره ذرياً.
+11. قبل التفعيل يقارن repository مجموعة revision IDs المبنية بالمجموعة الفعالة الحالية في MySQL؛ إذا تغيرت دورة الحياة أثناء البناء يرفض الإصدار كـ`index_build_stale` ولا يجعله active.
+12. بعد التحقق من artifact، تُخزن القطع في MySQL ويصبح الإصدار `active` وتنتقل النسخة النشطة السابقة إلى `retired`. إذا لم يبق أي مستند مؤهل، يُحال الفهرس النشط إلى retired بدلاً من نشر فهرس فارغ مضلل.
+13. عند السؤال يُضمّن query، ويبحث FAISS في ما يصل إلى `top_k*3` ثم يرشح ما دون `0.35` ويعيد عدة مرشحين مؤهلين فقط.
+14. إذا كان أقوى score أقل من `0.55` ولم يعطِ محلل النية query منظماً، يمكن إعادة صياغة السؤال مرة واحدة، ثم تتحقق الصلة المادية قبل قبول أي قطعة.
+15. إذا كان الاسترجاع النهائي كافياً، يرسل الأدلة مع معرفاتها إلى prompt ويقبل Gemini فقط إذا أعاد `basis=knowledge` ومعرفات ضمن allow-list، ثم يسجل `llm_runs` وmetadata التشغيلية.
 
 التنفيذ في [`backend/src/hotel_bot/application/knowledge.py`](../backend/src/hotel_bot/application/knowledge.py)، و[`backend/src/hotel_bot/infrastructure/repositories/knowledge.py`](../backend/src/hotel_bot/infrastructure/repositories/knowledge.py)، و[`backend/src/hotel_bot/infrastructure/faiss_store.py`](../backend/src/hotel_bot/infrastructure/faiss_store.py).
 
-## 12.2 اعتماد المستند
+## 12.2 الأب والنسخ والاعتماد
 
-الاعتماد لا يعيد بناء الفهرس تلقائياً. المستند المعتمد يصبح مؤهلاً فقط؛ يظل الفهرس السابق نشطاً إلى أن يضغط Admin إعادة بناء FAISS وتكتمل background task. إذا فشل البناء، تسجل الحالة `failed` ويبقى الفهرس النشط السابق صالحاً. يغطي ذلك [`backend/tests/integration/test_knowledge_lifecycle.py`](../backend/tests/integration/test_knowledge_lifecycle.py).
+حالة الأب مستقلة عن حالة النسخة. الأب `approved` يجعل نسخته الحالية مؤهلة، والأب `archived` يمنع جميع نسخه حتى لو بقيت النسخة الحالية موصوفة بأنها approved في التاريخ. يعتمد Admin مسودة جديدة لتصبح الفعالة، أو يعيد اعتماد نسخة historical عبر إجراء **اعتماد هذه النسخة** مع confirmation؛ لا يحذف ذلك أي نسخة أحدث. يبدأ rebuild تلقائياً، وتظهر الواجهة `building` أو `needs_rebuild` إلى أن تتطابق revision IDs في الفهرس النشط مع MySQL. يبقى زر **إعادة بناء FAISS** إجراءً صريحاً للتعافي أو التشغيل اليدوي. يغطي ذلك [`backend/tests/integration/test_knowledge_versioning.py`](../backend/tests/integration/test_knowledge_versioning.py).
 
 ## 12.3 التمثيل والعتبة
 
@@ -444,7 +444,7 @@ flowchart TD
 
 المصدر: [`backend/src/hotel_bot/core/config.py`](../backend/src/hotel_bot/core/config.py) والثابت في [`backend/src/hotel_bot/application/llm.py`](../backend/src/hotel_bot/application/llm.py).
 
-بعد عتبة FAISS، لا يعتمد النظام top-one الضعيف آلياً: يحافظ على عدة مرشحين وعنوان كل قطعة ولغتها ومعرفها وscore، ثم يعيد ترتيبها بصورة عامة وفق تغطية `material_conditions` والتداخل اللفظي والدرجة الدلالية. القطعة الضعيفة التي لا تتقاطع مع query أو أي شرط تُرفض؛ ولا توجد كلمات إنتاجية خاصة بالفطور أو الزواج أو المطار أو عنوان مستند بعينه. تستخدم صياغة الجواب وfallback المجموعة النهائية نفسها.
+بعد عتبة FAISS، لا يعتمد النظام top-one آلياً لمجرد أنه الأعلى: يحافظ على عدة مرشحين ومعرّفات المستند والنسخة والقطعة ورقم النسخة والعنوان واللغة والـscore والـmetadata، ثم يعيد ترتيبها بصورة عامة وفق تغطية `material_conditions` والتداخل المادي غير العام والدرجة الدلالية. تُستبعد مفردات الفندق العامة مثل room/booking/service/policy من إثبات الصلة؛ والقطعة التي لا تتقاطع مع query أو أي شرط تُرفض حتى لو كان score مرتفعاً. لا توجد كلمات إنتاجية خاصة بالزواج أو الحيوانات أو المطار أو عنوان مستند بعينه. تستخدم صياغة الجواب وfallback مجموعة الأدلة النهائية المتحققة نفسها؛ لذلك غياب السياسة المختلطة لا يسمح باستخدام Pet Policy.
 
 ## 12.4 إعادة الصياغة الدلالية
 
@@ -476,6 +476,12 @@ flowchart TD
 
 يخفض النظام الهلوسة عبر approved-only indexing، والعتبة، وprompt يعتبر الأدلة untrusted data، وresponse schema، وallow-list للمعرفات، وfallback. لكن لا توجد حالياً علاقة durable في قاعدة البيانات تربط كل رسالة outbound بمعرفات evidence التي استُخدمت. القطع وإصداراتها محفوظة، وLLM runs محفوظة، ومعرفات الدليل متحققة داخل `GroundedAnswer` أثناء التنفيذ، لكن outbound persistence يحفظ النص فقط. لذلك **التتبع الدائم لكل جواب إلى قطعة بعينها تحسين مستقبلي مطلوب**، ولا يجوز الادعاء أن صفحة Conversation تعرض evidence حالياً.
 
+## 12.9 الأرشفة والاستعادة
+
+- **Archive:** يغير حالة الأب إلى `archived` مع حفظ ID الأب وكل revision IDs وchecksums وسجل الموافقات. يمنع filter في MySQL الاسترجاع فوراً، ثم يعيد rebuild نشر vectors/metadata من corpus المؤهل فقط.
+- **Restore:** يعيد الأب نفسه إلى `approved` إذا كان له `current_revision_id`، أو إلى `draft` إن لم يكن له نسخة فعالة. لا ينشئ مستنداً أو نسخة مكررة، ثم يبدأ rebuild كي تعود النسخة الفعالة مؤهلة.
+- قبل اكتمال البناء لا تدعي الواجهة أن المستند قابل للاسترجاع؛ تعرض `building` أو `needs_rebuild`. فشل البناء لا يفعّل artifact ناقصاً، وfilter الحالة/النسخة يبقى حاجز أمان إضافياً.
+
 # 13. إضافة مستند جديد
 
 ## 13.1 سير Admin الدقيق
@@ -487,11 +493,13 @@ flowchart TD
 5. اختر لغة المستند `ar` أو `en`. المستند الواحد يحمل لغة واحدة؛ يمكن إنشاء مستندين متوازيين للمحتوى العربي والإنكليزي.
 6. اكتب محتوى لا يقل عن 20 حرفاً.
 7. احفظ؛ تنشأ نسخة مسودة.
-8. افتح المستند واضغط **اعتماد** على النسخة المطلوبة.
-9. اضغط **إعادة بناء FAISS**.
-10. انتظر حتى تكمل background task؛ استجابة HTTP `202` تعني أن البناء بدأ، لا أنه انتهى.
-11. اسأل عبر Telegram سؤالين بصياغتين لا تكرران العنوان حرفياً.
-12. تحقق من أن الجواب معلوماتي وأن **Tool events = 0** في تفاصيل المحادثة.
+8. افتح المستند واضغط **اعتماد النسخة** بعد confirmation؛ يبدأ rebuild تلقائياً.
+9. راقب حقول **حالة المستند، حالة النسخة، النسخة الفعالة، متاح للاسترجاع، حالة مزامنة FAISS**. استخدم **إعادة بناء FAISS** صراحةً إذا بقيت الحالة stale أو لأغراض العرض المضبوط.
+10. انتظر `synchronized` و`متاح للاسترجاع`؛ بدء background task لا يعني اكتمال التفعيل.
+11. لإصدار تحديث اضغط **نسخة جديدة**؛ إن وجدت مسودة يفتحها، وإلا يفتح محرراً من محتوى أحدث نسخة ويطلب تغييراً قبل إنشاء Version جديد تحت الأب نفسه.
+12. عدّل المسودة ثم اعتمدها؛ تبقى النسخة القديمة historical وread-only. يمكن اختيار **اعتماد هذه النسخة** لإعادة تفعيل نسخة معتمدة سابقة من دون حذف التاريخ.
+13. استخدم **أرشفة** لاستبعاد الأب وكل نسخه، و**استعادة** لإرجاع الأب نفسه والنسخة الفعالة السابقة.
+14. اسأل عبر Telegram سؤالين بصياغتين لا تكرران العنوان حرفياً، وتحقق أن **Tool events = 0**.
 
 الواجهة في [`frontend/src/pages/KnowledgePage.tsx`](../frontend/src/pages/KnowledgePage.tsx)، والـAPI في [`backend/src/hotel_bot/api/routes/admin.py`](../backend/src/hotel_bot/api/routes/admin.py)، والتنفيذ الخلفي في [`backend/src/hotel_bot/infrastructure/admin_runtime.py`](../backend/src/hotel_bot/infrastructure/admin_runtime.py).
 
@@ -499,23 +507,24 @@ flowchart TD
 
 - إنشاء checksum وrevision version.
 - تطبيع المحتوى.
+- حفظ draft تحت parent ID نفسه وإبقاء النسخ المعتمدة immutable.
 - إدراج العنوان ضمن text المراد تضمينه.
-- تجزئة كل النسخ المعتمدة.
+- تجزئة النسخة الفعالة المعتمدة فقط لكل أب نشط.
 - بناء artifact جديد والتحقق منه.
-- تفعيل الإصدار بصورة ذرية.
+- رفض build قديم إذا تغيرت revision IDs أثناء البناء، وتفعيل الإصدار المتطابق بصورة ذرية.
 - جعل المستند الجديد قابلاً للبحث العام من دون تعديل الراوتر.
 
 ## 13.3 ما يتطلب إجراء Admin
 
 - مراجعة صحة المحتوى.
 - اعتماد النسخة.
-- تشغيل إعادة الفهرسة.
-- انتظار اكتمالها والتحقق من readiness أو النتيجة.
+- انتظار المزامنة التلقائية أو تشغيل إعادة الفهرسة الصريحة عند الحاجة.
+- التحقق من retrieval eligibility لا من رسالة «بدأ البناء» وحدها.
 - الاختبار بصياغات بديلة.
 
 ## 13.4 قيد المراقبة الحالي
 
-واجهة Knowledge تعرض أن الفهرسة **بدأت** وعدد القطع المتوقع، لكنها لا تقوم polling لحالة `index_versions` ولا تعرض evidence per answer. يمكن فحص `/api/v1/health/ready` لمعرفة حالة FAISS العامة، لكن شاشة مخصصة لتاريخ الفهارس وحالة البناء ستكون تحسيناً مفيداً.
+واجهة Knowledge تعرض حالة الأب والنسخة الفعالة والنسخة المحددة وأهلية الاسترجاع وحالة مزامنة FAISS من MySQL، وتحدّث التفاصيل بعد العمليات. لا تقوم polling مستمراً بعد مغادرة الصفحة ولا تعرض evidence per answer أو تاريخ كل index version؛ لذلك يبقى refresh/زر rebuild و`/api/v1/health/ready` أدوات تحقق تشغيلية، وتبقى صفحة تاريخ فهارس مستقلة تحسيناً مستقبلياً.
 
 # 14. استدعاء الأدوات (Tool Calling) بالتفصيل
 
@@ -734,7 +743,7 @@ erDiagram
 
 ## 17.3 Knowledge
 
-إنشاء مستند، واختيار اللغة، وعرض revisions/checksum، واعتماد نسخة، وأرشفة المستند بتأكيد، وبدء إعادة بناء FAISS. متاحة لـAdmin فقط. الصفحة: [`frontend/src/pages/KnowledgePage.tsx`](../frontend/src/pages/KnowledgePage.tsx).
+تعرض رأس المستند منفصلاً عن revisions: حالة الأب، النسخة الفعالة، النسخة المحددة، حالة النسخة، retrieval eligibility وحالة FAISS. توفر New Version/Edit Draft/Approve/Archive/Restore/Rebuild وقراءة التاريخ وإعادة اعتماد نسخة سابقة، مع confirmation للعمليات الحساسة ونسخ SHA/IDs الطويلة. النسخ المعتمدة historical read-only. متاحة لـAdmin فقط. الصفحة: [`frontend/src/pages/KnowledgePage.tsx`](../frontend/src/pages/KnowledgePage.tsx).
 
 ## 17.4 Tool Events
 
@@ -746,7 +755,7 @@ erDiagram
 
 ## 17.6 Evaluations
 
-تشغيل dataset مجمد `hotel-support-baseline-v1`، وعرض تشغيلات التقييم وmetrics المقسمة. يستطيع Admin وEvaluator الوصول. الصفحة: [`frontend/src/pages/EvaluationsPage.tsx`](../frontend/src/pages/EvaluationsPage.tsx).
+تشغيل dataset مجمد `hotel-support-baseline-v1` وعرض هوية كل run وتاريخه وحالته ووضع offline وإصدارات التطبيق/الراوتر/المصنف/datasets/models وأعداد العينات. تشرح الصفحة كل metric، وتميز hashing test بوضوح، ولا تعرض `0.0%` لجودة جواب بلا labels، وتفصل expected rejected عن unexpected failed. كل run معروض كسجل تاريخي لا كإثبات على production الحالي. يستطيع Admin وEvaluator الوصول. الصفحة: [`frontend/src/pages/EvaluationsPage.tsx`](../frontend/src/pages/EvaluationsPage.tsx).
 
 ## 17.7 Hotel Data
 
@@ -809,6 +818,10 @@ erDiagram
 ## 18.4 العربية والإنكليزية
 
 يبدل I18n context `document.lang` و`dir=rtl/ltr` ويترجم عناصر navigation العامة. لكن كثيراً من نصوص الصفحات خليط عربي/إنكليزي ومكتوبة مباشرة وليست جميعها ضمن قاموس i18n؛ لذلك الواجهة **ثنائية الاتجاه جزئياً وليست ترجمة كاملة لكل النصوص**.
+
+## 18.5 الاستجابة في Knowledge وEvaluations
+
+تستخدم الصفحتان children ذات `min-width: 0`، وgrids مرنة بـ`minmax/auto-fit`، وتتحول قائمة التشغيل/المستند مع التفاصيل من side-by-side إلى stacked تحت 850px. تعزل identifiers التقنية باتجاه LTR وتسمح `overflow-wrap:anywhere` مع زر Copy، وتلتف status chips والأزرار. تحقق المتصفح المحلي عند 360 و390 و768 و1024 و1280 و1440 بكسل سجّل `scrollWidth <= clientWidth` بلا عنصر يتجاوز viewport؛ هذا تحقق offline للواجهة المبنية، وليس تحققاً من deployment الإنتاجي.
 
 # 19. الذكاء الاصطناعي والنماذج
 
@@ -952,6 +965,19 @@ MySQL transaction
 
 الملفان هما [`backend/artifacts/evaluation/intent-evaluation-v1.json`](../backend/artifacts/evaluation/intent-evaluation-v1.json) و[`backend/reports/knowledge-retrieval-v1.json`](../backend/reports/knowledge-retrieval-v1.json).
 
+التعريفات الفعلية التي تعرضها الصفحة:
+
+- **Intent Accuracy:** عدد تنبؤات النية المطابقة مباشرة للمتوقع مقسوماً على 80 عينة اختبار.
+- **Coverage:** `accepted_count / sample_count`؛ والعينة accepted فقط إذا تجاوزت confidence threshold وmargin threshold في التقرير. لا تعني coverage صحة القرار.
+- **Macro F1:** متوسط F1 لفئات النوايا العشر بوزن متساوٍ لكل فئة.
+- **Recall@K:** متوسط نسبة relevant document keys التي ظهرت ضمن أول K لكل سؤال، لا يشترط المرتبة الأولى.
+- **Top 1 Accuracy:** نسبة الحالات التي كان أول key مسترجع فيها relevant.
+- **MRR:** متوسط مقلوب ترتيب أول relevant key؛ عدم وجوده يعطي صفراً.
+- **Traceability:** نسبة الحالات التي كانت كل keys المسترجعة فيها موجودة في document keys الخاصة بالdataset. **لا يثبت أن الدليل صحيحاً ولا يثبت lineage production لكل جواب.**
+- **LLM Reliability:** نجاح provider calls تقنياً من سجلات `llm_runs`. **100% لا تعني 100% دقة جواب.**
+
+إذا كان `embedding_model=hashing-test-v1:384` تعرض الواجهة badge واضحاً ونصاً أن النتيجة لا تمثل Sentence Transformer الإنتاجي. كل run يعرض `run_name`, timestamp, status, offline/frozen identity, application/git commit عند تسجيله، router/classifier/datasets/models/sample counts؛ والقيم المفقودة في runs القديمة تظهر `not recorded` بدلاً من اختراعها.
+
 ## 21.3 قياسات الإجابة والأداة
 
 `SQLAlchemyAdminRepository.operational_evaluation_metrics` ينتج:
@@ -966,17 +992,20 @@ MySQL transaction
 
 الرفض الأمني المتوقع مثل verification خاطئ أو confirmation مفقود يجب ألا يحتسب execution failure. الكود يفصل `rejected` عن `failed + timed_out`؛ مقام valid success rate هو succeeded + unexpected failures فقط. المصدر: [`backend/src/hotel_bot/infrastructure/repositories/admin.py`](../backend/src/hotel_bot/infrastructure/repositories/admin.py).
 
+تعرض الواجهة total attempts وsucceeded وexpected rejected وunexpected failed وvalid-request success rate ونسبة الرفض، مع labels عربية/إنكليزية بدلاً من raw JSON. إذا كان `evaluator_sample_count=0` لا تعرض `0.0%` لجودة الإجابة، بل «لا توجد تقييمات بشرية حتى الآن» وتوضح أن labels ملاحظات بشرية وليست automatic ground truth ولا تسمح باستنتاج جودة قبل المراجعة.
+
 لا تعيد هذه المهمة حساب artifact الدقة التاريخي للمصنف ولا تخترع score للـhybrid. يسجل سجل الرسالة القرار النهائي ونسخة `hybrid-intent-v1.0.0` عند استخدام المحلل، ويسجل `llm_runs` نوع `hybrid_intent_analysis` وحالته ومدته وكلفته التقديرية، بينما يغطي الاختبار offline دقة الاختيار لكل سيناريو، ومعدل الاستدعاء/التجاوز، وfallback، وعدم تنفيذ أداة.
 
 ## 21.4 آخر حالة تحقق مثبتة
 
-- focused offline tests: **92 passed**.
-- normal backend suite مع `RUN_PRODUCTION_RAG=0`: **175 passed, 15 skipped**.
+- focused Knowledge/FAISS/routing/evaluation tests: **52 passed**.
+- normal backend suite مع `RUN_PRODUCTION_RAG=0` و`RUN_MYSQL_INTEGRATION=1`: **192 passed, 1 skipped**؛ الاختبار المتخطى الوحيد هو قبول RAG الحي opt-in.
 - `python -m compileall backend/src/hotel_bot`: **passed**.
 - Ruff على ملفات المصدر المتغيرة: **passed**.
 - Mypy على ملفات المصدر المتغيرة: **passed**.
+- Frontend Vitest: **14 passed**، وproduction build: **passed**.
 
-هذه نتائج تحقق محلية offline نُفذت على شجرة تغيير الـConfidence-Gated Hybrid Router قبل commit التسليم. الحالات الـ15 المتخطاة بوابات opt-in لـMySQL أو production RAG، ولم يُستدعَ Gemini أو أي API خارجي.
+هذه نتائج تحقق محلية offline نُفذت على شجرة Knowledge/Evaluations قبل commit التسليم. استُخدم MySQL المحلي وFAISS الفعلي في اختبارات دورة حياة المستند، وبقي اختبار RAG الإنتاجي الحي فقط خلف `RUN_PRODUCTION_RAG=1`. لم يُستدعَ Gemini أو Telegram أو أي API خارجي.
 
 ## 21.5 قيد اختبار RAG الحي
 
@@ -999,6 +1028,7 @@ MySQL transaction
 | [`backend/tests/unit/domain/test_admin_security.py`](../backend/tests/unit/domain/test_admin_security.py) | scrypt، token tampering/base64/canonical/expiry boundary، masking، RBAC |
 | [`backend/tests/unit/domain/test_hotel_security.py`](../backend/tests/unit/domain/test_hotel_security.py) | PBKDF2 والتحقق fail closed |
 | [`backend/tests/unit/domain/test_knowledge_pipeline.py`](../backend/tests/unit/domain/test_knowledge_pipeline.py) | chunking، تقرير retrieval، checksum/path safety لـFAISS |
+| [`backend/tests/unit/domain/test_evaluation_semantics.py`](../backend/tests/unit/domain/test_evaluation_semantics.py) | هوية run غير المتصل، frozen baseline، إصدارات الراوتر/datasets، عدم استدعاء LLM، وفصل tool rejection |
 
 تستخدم هذه الاختبارات fakes/stubs عند حدود LLM/repository كي تكون حتمية وسريعة ولا تستهلك حصة.
 
@@ -1010,6 +1040,7 @@ MySQL transaction
 - seed والمخزون والمعاملات في [`backend/tests/integration/test_hotel_seed_and_operations.py`](../backend/tests/integration/test_hotel_seed_and_operations.py).
 - الأدوات والتدقيق والخصوصية وidempotency في [`backend/tests/integration/test_controlled_hotel_tools.py`](../backend/tests/integration/test_controlled_hotel_tools.py).
 - lifecycle اعتماد المعرفة وactivation الذري في [`backend/tests/integration/test_knowledge_lifecycle.py`](../backend/tests/integration/test_knowledge_lifecycle.py).
+- دورة الأب والنسخ، تعديل draft، تفعيل نسخة واحدة، archive/restore، stale-index protection، metadata mapping، وإثبات topic مستقبلي في [`backend/tests/integration/test_knowledge_versioning.py`](../backend/tests/integration/test_knowledge_versioning.py).
 - Admin API والمصادقة وRBAC وmasking وHotel Data في [`backend/tests/integration/test_admin_api.py`](../backend/tests/integration/test_admin_api.py).
 - schema migrated ومطابقة metadata في [`backend/tests/integration/test_mysql_schema.py`](../backend/tests/integration/test_mysql_schema.py).
 - رحلة حجز وخدمة غرف لا تعيد السؤال في [`backend/tests/integration/test_demo_acceptance_flows.py`](../backend/tests/integration/test_demo_acceptance_flows.py).
@@ -1038,8 +1069,9 @@ MySQL transaction
 
 - [`frontend/src/auth/memory-security.test.ts`](../frontend/src/auth/memory-security.test.ts): sessionStorage، restoration، invalid token، وحماية المسار أثناء restoration.
 - [`frontend/src/lib/api.test.ts`](../frontend/src/lib/api.test.ts): Bearer header، controlled errors، correlation ID، و401 invalidation.
+- [`frontend/src/pages/knowledge-evaluations.test.tsx`](../frontend/src/pages/knowledge-evaluations.test.tsx): Archive/Restore/New Version actions، read-only history، حالات document/revision/FAISS المنفصلة، hashing badge، empty evaluator labels، readable tool states، الشروحات والهوية التاريخية.
 
-لا توجد اختبارات component/E2E واسعة لكل صفحات Admin في النسخة الحالية؛ هذا قيد.
+لا توجد E2E شاملة لكل صفحات Admin، لكن Knowledge/Evaluations تملكان الآن اختبارات presentation بعرض server-rendered، واختبار responsive محلي عند المقاسات الستة. يبقى browser E2E متصل بـBackend الحقيقي بعد deployment قيد تحقق يدوي.
 
 ## 22.6 mocks مقابل التكامل الحقيقي
 
@@ -1142,18 +1174,18 @@ MySQL healthy
 | Room service | إنشاء محاكى بتأكيد/idempotency | وحدة + MySQL + guest flow | غير مثبت للنسخة الحالية | لا يرسل إلى طاقم فعلي |
 | Maintenance | إنشاء محاكى وتصنيف فئة | وحدة + MySQL | غير مثبت للنسخة الحالية | الطوارئ تحتاج تكامل بشري |
 | Service tracking | موجود لطلب مرتبط بحجز | وحدة + MySQL tools | غير مثبت للنسخة الحالية | الطلب بلا حجز يتطلب موظفاً |
-| Knowledge documents | create/revision/approve/archive | Admin API + lifecycle | وجود UI/config فقط | مراجعة المحتوى بشرية |
-| FAISS rebuild | background immutable activation | lifecycle + FAISS unit | غير مثبت بعد كل نشر | UI لا يعمل polling |
-| Confidence-gated hybrid routing | fast paths + classifier + advisory structured LLM + deterministic policy | 24 hybrid cases ضمن 92 focused passed | قبول Gemini الحي معلق | quota/latency/provider |
+| Knowledge documents | parent + draft/history/effective + archive/restore/reactivate | MySQL versioning + Admin API + Frontend | غير مثبت بعد نشر هذا الالتزام | مراجعة المحتوى بشرية |
+| FAISS rebuild | automatic lifecycle sync + manual rebuild + stale-build rejection | MySQL/FAISS lifecycle + metadata mapping | غير مثبت بعد كل نشر | لا يوجد polling مستمر أو index-history page |
+| Confidence-gated hybrid routing | fast paths + classifier + advisory structured LLM + deterministic policy | 24 hybrid cases ضمن 52 focused Knowledge/routing passed | قبول Gemini الحي معلق | quota/latency/provider |
 | Generic knowledge routing | action-vs-information + expandable RAG | focused offline passed | full live Tests 1–8 معلق | حالات لغوية جديدة |
 | Gemini grounded answer | schema/allow-list/fallback | stubbed offline passed | full live run غير مكتمل | quota/latency/provider |
 | Rewritten fallback | يستخدم الدليل النهائي | 429 regression passed | غير مثبت حياً | fallback يعرض chunk مباشرة |
 | Admin auth refresh | session restore + `/me` | Frontend tests + Admin API | غير مثبت لهذه النسخة | bearer في sessionStorage |
 | Hotel Data Admin | فئات/غرف/حجوزات/demo | Admin integration | غير مثبت لهذه النسخة | UI غير شامل لكل الحقول |
-| Evaluations | artifacts + operational aggregation | Backend suite | غير مثبت لهذه النسخة | dataset اصطناعي |
+| Evaluations | run identity + exact explanations + honest offline/tool/label states | Backend semantics + Frontend presentation + build | غير مثبت لهذه النسخة | dataset اصطناعي ولا labels بشرية كافية |
 | Deployment config | Hostinger وstandalone | config/contracts سابقة | لا دليل أن HEAD الحالي منشور | البيئة الخارجية وNPM |
 
-الحالة المرجعية الدقيقة هي commit النهائي المبلغ في تسليم مهمة الـHybrid Router. لا يوجد في هذه الوثيقة ادعاء أن live production تلقى ذلك commit.
+الحالة المرجعية الدقيقة هي الالتزام الذي يحتوي هذه الوثيقة بعد اجتياز الاختبارات offline. لا يوجد ادعاء أن live production تلقى إصلاح Knowledge/Evaluations حتى تنفذ قائمة التحقق اليدوية بعد النشر.
 
 # 25. القيود الحالية
 
@@ -1166,12 +1198,12 @@ MySQL healthy
 7. **واجهة النزيل:** Telegram فقط.
 8. **اللغات:** العربية والإنكليزية فقط، والـi18n الإداري جزئي.
 9. **Evidence lineage:** لا توجد علاقة persisted بين outbound message وknowledge chunks المستخدمة.
-10. **Reindex visibility:** endpoint يبدأ background task، والواجهة لا تعرض تقدمها أو تاريخ الإصدارات.
+10. **Reindex visibility:** الواجهة تعرض `building/needs_rebuild/synchronized` على مستوى المستند عند refresh، لكنها لا تعمل polling مستمراً ولا تعرض تقدم النسبة أو تاريخ كل index version.
 11. **Fallback RAG:** عند فشل Gemini يعرض نص القطعة، وليس صياغة ذكية لكل سؤال.
 12. **Search:** dense semantic فقط؛ لا BM25 ولا hybrid ولا reranker.
 13. **Exact FAISS:** `IndexFlatIP` جيد للحجم الصغير، وقد لا يلائم corpus ضخماً.
 14. **إدارة Admin:** لا UI لإدارة الحسابات أو MFA أو refresh token.
-15. **Frontend tests:** لا E2E شامل للصفحات والمتصفح.
+15. **Frontend tests:** توجد presentation tests وفحص responsive للمقاسات المطلوبة، لكن لا E2E شامل متصل بBackend production.
 16. **Production evidence:** وجود ملفات النشر لا يثبت صحة DNS/SSL/Webhook أو commit المنشور الحالي.
 17. **Retention:** الرسائل تُنقح بعد الفترة؛ لا يوجد archive تحليلي مجهول الهوية منفصل.
 18. **Conversation language:** اللغة المفضلة persisted؛ تبديل لغة الرسالة وحده قد لا يغيرها بعد تأسيس الضيف ما لم يستخدم `/ar` أو `/en`.
@@ -1227,12 +1259,13 @@ MySQL healthy
 | 03:10–03:40 | كرر مع رمز خاطئ لحجز عرض آخر | «الحجز الغائب والرمز الخاطئ يعطيان فشلاً عاماً لا يكشف أيهما صحيح.» |
 | 03:40–04:30 | Telegram: `أريد غرفة من 2026-08-10 إلى 2026-08-12 لشخصين` | «طلب صريح؛ ينفذ availability tool ولا يذهب إلى RAG.» |
 | 04:30–05:40 | Telegram: `جيبلي الفطور لو سمحت` ثم `101` ثم Confirm | «الصياغة العامية اجتازت بوابة التعارض إلى room service؛ طلب رقم الغرفة فقط، والكتابة لم تحدث قبل التأكيد.» |
-| 05:40–06:30 | Admin → Knowledge، افتح مستند airport أو مستند سياسة معتمد | «المعرفة versioned ولا يدخل FAISS إلا المعتمد.» |
-| 06:30–07:10 | اضغط Rebuild FAISS فقط إذا كان ضرورياً ومجهزاً مسبقاً | «202 تعني بدأ البناء؛ لا أخلطها مع نجاح التفعيل.» |
-| 07:10–08:10 | اسأل: `شو وقت تقديم الفطور؟` ثم `الفطور؟` ثم سؤال السياسة | «الأول Knowledge، والثاني clarification مركز، والثالث Knowledge لا availability؛ Tool events تساوي صفراً.» |
+| 05:40–06:25 | Admin → Knowledge، افتح المستند وأظهر حالة الأب والنسخة الفعالة وFAISS | «الأب والنسخة مفهومان منفصلان؛ لا يدخل RAG إلا current revision لأب approved.» |
+| 06:25–07:05 | اضغط New Version، اعرض draft وتاريخ Version 1 ثم ألغِ قبل تغيير بيانات العرض إن لم تكن مجهزة | «المسودة تحت parent نفسه، قابلة للتحرير، وVersion 1 read-only.» |
+| 07:05–07:35 | اعرض Archive/Restore وNeeds rebuild أو Synchronized؛ لا تنفذ تغييراً حياً غير مجهز | «الأرشفة تحفظ السجل وتستبعد الاسترجاع؛ الاستعادة لا تكرر IDs.» |
+| 07:35–08:20 | اسأل: `شو وقت تقديم الفطور؟` ثم `الفطور؟` ثم سؤال السياسة | «الأول Knowledge، والثاني clarification مركز، والثالث Knowledge لا availability؛ Tool events تساوي صفراً.» |
 | 08:10–09:00 | افتح Conversation Detail | «Tool events لهذا السؤال صفر. الواجهة الحالية لا تعرض evidence ID؛ أعرض المستند والجواب جنباً إلى جنب وأذكر هذا القيد.» |
 | 09:00–09:40 | افتح Service Requests أو المحادثة السابقة | «هنا أثر الأداة المنقح وحالة الطلب.» |
-| 09:40–10:00 | افتح Evaluations | «هذه artifacts ثابتة وmetrics تشغيلية، وليست ادعاء اختبار مستخدمين حقيقيين.» |
+| 09:40–10:00 | افتح Evaluations وHow to read | «hashing-test offline ليس production، Traceability ليست correctness، وLLM reliability ليست answer accuracy.» |
 
 ## 27.2 إعداد العرض مسبقاً
 
@@ -1240,7 +1273,7 @@ MySQL healthy
 2. افحص readiness وFAISS قبل اللجنة.
 3. فعّل `DEMO_MODE=true` فقط في بيئة العرض المحمية.
 4. أعد seed demo إن لزم قبل العرض، لا أثناءه إلا كميزة.
-5. اعتمد المستند وأعد FAISS قبل العرض؛ لا تعتمد على وقت تحميل النموذج أمام اللجنة.
+5. اعتمد المستند وتحقق من `synchronized/متاح للاسترجاع` قبل العرض؛ احتفظ بزر Rebuild للتعافي ولا تعتمد على وقت تحميل النموذج أمام اللجنة.
 6. جهز تبويبات Admin وTelegram وhealth مسبقاً.
 7. لا تعرض `.env` أو Docker Manager variables أو logs خاماً.
 
@@ -1374,6 +1407,18 @@ approved-only index، وminimum score، وevidence allow-list، وprompt treats 
 
 الـprompt يطلب شرح القاعدة الموثقة ثم التصريح بأن المعلومات المعتمدة لا تحدد التفصيل. مثال العقوبة: لا نخترع غرامة. إذا فشل Gemini، fallback يعرض القطعة نفسها ولا يضيف ادعاء.
 
+### س20-أ: لماذا لا تُسترجع نسخة approved داخل أب archived؟
+
+لأن approval يصف تاريخ النسخة، بينما حالة الأب هي بوابة lifecycle. استعلام الفهرسة والاسترجاع يشترط `KnowledgeDocument.status=approved` و`current_revision_id=revision.id` معاً؛ الأرشفة تحفظ الاعتماد لكنها توقف أهلية كل النسخ.
+
+### س20-ب: كيف تمثلون Draft وHistorical بلا عمود status جديد للنسخة؟
+
+`current_revision_id` يحدد الفعالة، وأحداث `knowledge_revision_approved/reactivated` في `audit_events` تثبت أن نسخة ما اعتُمدت سابقاً. نسخة غير current لها حدث اعتماد هي historical؛ وإن لم تملك حدثاً فهي draft قابلة للتحرير. لذلك خدم المخطط الحالي المطلوب بلا migration.
+
+### س20-ج: كيف تمنعون اختلاف MySQL عن FAISS؟
+
+الاسترجاع يفلتر حالة الأب والنسخة الفعالة فوراً، والعمليات المؤثرة تطلق rebuild، والواجهة لا تدعي eligibility قبل تطابق active-index revision IDs مع MySQL. وقبل التفعيل يرفض repository أي build صارت revision set الخاصة به stale.
+
 ## 28.3 الحالة والأدوات
 
 ### س21: لماذا Conversation State؟
@@ -1451,6 +1496,18 @@ Intent artifact ثابت، وretrieval artifact ثابت، وoperational LLM/too
 ### س38: لماذا لا تحسبون الرفض الأمني كفشل؟
 
 لأن رفض رمز خاطئ أو كتابة غير مؤكدة هو نجاح للسياسة. الكود يفصل rejected عن failed/timed_out عند حساب valid request success rate.
+
+### س38-أ: هل Traceability بنسبة 100% تعني أن الدليل صحيح؟
+
+لا. تعريف artifact الحالي يتحقق أن keys المسترجعة قابلة للربط بمستندات dataset فقط. لا يقيس entailment ولا صحة المستند ولا lineage الدائم لكل جواب production.
+
+### س38-ب: هل LLM Reliability بنسبة 100% تعني دقة الإجابات؟
+
+لا. هي نسبة provider calls الناجحة تقنياً. قد ينجح الاتصال ويعيد جواباً ضعيفاً؛ جودة الجواب تحتاج evidence correctness وlabels بشرية، وإذا كان evaluator sample count صفراً فلا نستنتج جودة.
+
+### س38-ج: لماذا تميزون `hashing-test-v1:384`؟
+
+هو embedder حتمي سريع لاختبارات offline وإعادة الإنتاج، وليس Sentence Transformer المستخدم إنتاجياً. لذلك لا تُنسب Recall@K وTop-1 الخاصة به مباشرة إلى أداء production.
 
 ### س39: هل نجحت Tests 1–8 الحية؟
 
@@ -1532,11 +1589,11 @@ SQLAlchemy async وMySQL transactions وunique constraints وidempotency تدع�
 
 ### س13: ماذا يحدث إذا ضغط Admin إعادة الفهرسة مرتين؟
 
-ينشأ build مستقل لكل طلب. artifacts immutable والتفعيل ذري، لكن لا يظهر lock يمنع builds متزامنة على مستوى UI؛ قد يفوز آخر activation. queue/single-flight تحسين مطلوب.
+ينشأ build مستقل immutable لكل طلب، لكن التفعيل لا يعتمد ترتيب الانتهاء وحده: يقارن revision IDs المبنية بالمجموعة الفعالة الحالية في MySQL ويرفض أي snapshot stale. قد يبقى build زائد بتكلفة غير ضرورية، لذلك queue/single-flight تحسين أداء مفيد، أما فهرس دورة حياة قديمة فلا يُفعّل بصمت.
 
-### س14: لماذا لا يُبنى FAISS تلقائياً عند الاعتماد؟
+### س14: لماذا تبنون FAISS تلقائياً مع إبقاء زر يدوي؟
 
-الفصل يسمح بمراجعة عدة تغييرات ثم بناء واحد، ويمنع تكلفة مفاجئة. العيب خطر نسيان الخطوة؛ يمكن إضافة خيار auto-reindex أو banner واضح لاحقاً.
+الاعتماد/إعادة التفعيل/archive/restore تغير corpus الفعال، لذلك يبدأ rebuild تلقائياً لتقليل فترة عدم التطابق. أما إنشاء أو تحرير draft فلا يغير corpus ولا يبني. يبقى الزر اليدوي للتعافي والتحقق التشغيلي؛ والواجهة تعرض building/needs rebuild/synchronized ولا تعتبر بدء الطلب اكتمالاً.
 
 ### س15: هل حفظ 90 يوماً متوافق مع الخصوصية؟
 
@@ -1666,9 +1723,24 @@ Telegram
 
 ### RAG في سبع كلمات منطقية
 
-`Create → Approve → Reindex → Embed → Retrieve → Ground → Audit`
+`Draft → Approve → Synchronize → Retrieve → Validate → Ground → Audit`
 
-تفصيلها: Admin ينشئ نسخة ويعتمدها، يعيد FAISS، يُضمّن السؤال، تُقبل قطعة فوق 0.35، وقد يعاد query إذا score أقل من 0.55، ثم يتحقق التطبيق من evidence allow-list. لا دليل يعني لا جواب مختلق.
+تفصيلها: Admin ينشئ نسخة تحت أب ثابت ويعتمد نسخة فعالة واحدة، فتبدأ مزامنة FAISS؛ draft/history/archived لا تدخل. بعد threshold لا تكفي «أعلى نتيجة»، بل يجب أن تتصل query أو material conditions بمحتوى الدليل. لا دليل صالح يعني controlled unsupported، لا Pet Policy ولا جواب مختلق.
+
+### دورة مستند المعرفة للحفظ
+
+`Parent ثابت → Draft قابل للتحرير → Approved effective وحيد → Historical read-only → Archive/Restore بلا حذف`
+
+New Version لا يكرر الأب. Archive يحفظ current revision لكنه يمنعها من retrieval. Restore يعيد الأب نفسه ويزامن FAISS. إعادة اعتماد historical تحفظ كل النسخ الأحدث.
+
+### قراءة التقييم للحفظ
+
+- Recall@K: الدليل الصحيح ضمن K؛ Top 1: هو الأول تحديداً.
+- Traceability: keys قابلة للربط، وليست correctness.
+- LLM Reliability: نجاح تقني، وليست answer accuracy.
+- evaluator samples = 0: لا حكم على جودة الإجابات.
+- `hashing-test-v1:384`: offline test، لا يمثل Sentence Transformer production.
+- rejected expected قد يثبت أن validation/security نجحا؛ failed/timed_out غير المتوقع منفصل.
 
 ### Tool Calling في سبع كلمات منطقية
 
@@ -1691,8 +1763,9 @@ Telegram
 
 ### نتائج الاختبار التي يجوز قولها
 
-- Focused offline: 92 passed.
-- Normal Backend مع live RAG معطّل: 175 passed, 15 skipped.
+- Focused Knowledge/FAISS/routing/evaluation: 52 passed.
+- Normal Backend مع live RAG معطّل وMySQL integration مفعّل: 192 passed, 1 skipped (اختبار RAG الحي opt-in فقط).
+- Frontend: 14 Vitest passed، وproduction build passed.
 - Compileall: passed.
 - Ruff: passed.
 - Mypy: passed.
@@ -1708,7 +1781,7 @@ Telegram
 4. hybrid analysis أو query rewrite قد يزيدان latency/quota، لكنهما gated ولا يعملان لكل رسالة.
 5. dataset اصطناعي ولا يوجد pilot حقيقي.
 6. evidence IDs لا تحفظ كعلاقة لكل جواب حالياً.
-7. Admin i18n واختبارات Frontend E2E غير كاملين.
+7. Admin i18n وE2E المتصل بالإنتاج غير كاملين؛ Knowledge/Evaluations لهما presentation وresponsive checks محلية.
 8. نشر commit الحالي يحتاج تحققاً حياً منفصلاً.
 
 ### أقوى مساهمة
