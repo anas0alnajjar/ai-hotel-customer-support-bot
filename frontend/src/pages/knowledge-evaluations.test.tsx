@@ -2,19 +2,18 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import type { Evaluation, KnowledgeDetail, KnowledgeRevision } from '../types'
 import {
-  canCreateNewVersion,
   documentLifecycleAction,
+  effectiveRevision,
   KnowledgeStatusSummary,
-  revisionActions,
-  revisionStatusLabel,
+  pendingDraft,
 } from './KnowledgePage'
 import {
-  EvaluationDetail,
-  HowToReadEvaluations,
+  EvaluationDisclaimer,
+  EvaluationSummary,
   isOfflineTestEmbedding,
   metricExplanation,
-  toolStatusLabel,
 } from './EvaluationsPage'
+import { PRIMARY_HOTEL_DATA_TABS } from './HotelDataPage'
 
 const approvedRevision: KnowledgeRevision = {
   id: 'rev-1', version: 1, content: 'Approved policy content', checksum: 'a'.repeat(64),
@@ -23,63 +22,66 @@ const approvedRevision: KnowledgeRevision = {
   effective: true, indexed_in_faiss: true, editable: false,
 }
 
-describe('Knowledge lifecycle presentation', () => {
-  it('shows Restore only for archived parents and Archive for active parents', () => {
+const draftRevision: KnowledgeRevision = {
+  ...approvedRevision,
+  id: 'rev-2',
+  version: 2,
+  content: 'Draft policy content',
+  status: 'draft',
+  approved_at: null,
+  approved_by: null,
+  effective: false,
+  indexed_in_faiss: false,
+  editable: true,
+}
+
+const knowledgeDetail: KnowledgeDetail = {
+  document: {
+    id: 'doc-1', title: 'Policy', language: 'ar', source_format: 'plain_text',
+    status: 'approved', current_revision_id: approvedRevision.id, revision_count: 2,
+    created_at: '2026-07-01T10:00:00Z', updated_at: '2026-07-02T10:00:00Z',
+  },
+  revisions: [draftRevision, approvedRevision],
+  retrieval_eligible: true,
+  faiss_sync_status: 'synchronized',
+  active_index_id: 'index-1',
+}
+
+describe('Simplified Knowledge presentation', () => {
+  it('keeps archive/restore and identifies only effective content plus a pending draft', () => {
     expect(documentLifecycleAction('archived')).toBe('restore')
     expect(documentLifecycleAction('approved')).toBe('archive')
-    expect(canCreateNewVersion('archived')).toBe(false)
-    expect(canCreateNewVersion('approved')).toBe(true)
+    expect(effectiveRevision(knowledgeDetail)?.id).toBe('rev-1')
+    expect(pendingDraft(knowledgeDetail)?.id).toBe('rev-2')
   })
 
-  it('keeps approved history read-only and exposes editable draft actions', () => {
-    const historical = { ...approvedRevision, id: 'rev-old', status: 'historical' as const, effective: false, indexed_in_faiss: false }
-    const draft = { ...approvedRevision, id: 'rev-2', version: 2, status: 'draft' as const, approved_at: null, approved_by: null, effective: false, indexed_in_faiss: false, editable: true }
-    expect(revisionActions(historical)).toEqual(['reactivate'])
-    expect(revisionStatusLabel(historical)).toContain('تاريخية')
-    expect(revisionActions(draft)).toEqual(['edit', 'approve'])
-    expect(revisionStatusLabel(draft)).toBe('مسودة')
-  })
-
-  it('renders document and revision status, retrieval eligibility, and FAISS state separately', () => {
-    const detail: KnowledgeDetail = {
-      document: {
-        id: 'doc-1', title: 'Policy', language: 'ar', source_format: 'plain_text',
-        status: 'archived', current_revision_id: approvedRevision.id, revision_count: 1,
-        created_at: '2026-07-01T10:00:00Z', updated_at: '2026-07-02T10:00:00Z',
-      },
-      revisions: [approvedRevision], retrieval_eligible: false,
-      faiss_sync_status: 'needs_rebuild', active_index_id: 'index-1',
-    }
-    const html = renderToStaticMarkup(<KnowledgeStatusSummary detail={detail} selectedRevision={approvedRevision.id} />)
+  it('shows only submission-level status without SHA or historical reactivation details', () => {
+    const html = renderToStaticMarkup(<KnowledgeStatusSummary detail={knowledgeDetail} />)
     expect(html).toContain('حالة المستند')
-    expect(html).toContain('مؤرشف')
-    expect(html).toContain('حالة النسخة')
     expect(html).toContain('Version 1')
-    expect(html).toContain('غير متاح للاسترجاع')
-    expect(html).toContain('يحتاج إعادة بناء الفهرس')
+    expect(html).toContain('متاح عبر RAG')
+    expect(html).toContain('متزامن')
+    expect(html).not.toContain('SHA')
+    expect(html).not.toContain('اعتماد هذه النسخة')
   })
 })
 
-describe('Evaluation meaning and honesty', () => {
+describe('Simplified Evaluation presentation', () => {
   const evaluation: Evaluation = {
     id: 'evaluation-run-1234567890', dataset_version: 'hotel-support-baseline-v1',
     system_versions: {
       run_name: 'Frozen offline hotel-support baseline', run_mode: 'offline',
-      baseline_type: 'frozen_baseline', application: '0.1.0',
-      git_commit: '851de5419ca66759d56b6dce91bd2f8906265a7b',
-      router: 'hybrid-intent-v1.0.0', intent_classifier: 'classifier-with-a-very-long-version-name',
-      intent_dataset: 'intent-dataset-v1.0.0', retrieval_dataset: 'nour-al-sham-knowledge-v1.0.0',
-      embedding_model: 'hashing-test-v1:384', llm_model: 'gemini-2.5-flash', llm_called: false,
-      intent_sample_count: 80, retrieval_sample_count: 44, evaluator_sample_count: 0,
+      embedding_model: 'hashing-test-v1:384',
+      git_commit: 'should-not-be-visible-in-summary',
     },
     metrics: {
-      retrieval: { recall_at_k: 0.977, top_1_accuracy: 0.841, traceability_rate: 1 },
-      answer_quality: { evaluator_sample_count: 0, average_evaluator_rating: null },
-      llm_reliability: { sample_count: 4, success_rate: 1, status_counts: { succeeded: 4 } },
+      intent: { accuracy: 0.875 },
+      retrieval: { recall_at_k: 0.977, top_1_accuracy: 0.841 },
+      llm_reliability: { success_rate: 1 },
       tool_execution: {
-        status_counts: { succeeded: 8, rejected: 6 }, sample_count: 14,
-        valid_tool_requests_succeeded: 8, expected_requests_rejected: 6,
-        unexpected_execution_failures: 0, valid_request_success_rate: 1,
+        valid_request_success_rate: 1,
+        unexpected_execution_failures: 0,
+        status_counts: { succeeded: 8, rejected: 6 },
       },
     },
     status: 'completed', started_at: '2026-07-01T10:00:00Z',
@@ -87,28 +89,29 @@ describe('Evaluation meaning and honesty', () => {
     created_at: '2026-07-01T10:00:00Z',
   }
 
-  it('uses exact metric guidance and readable tool labels', () => {
-    expect(metricExplanation('coverage')?.en).toContain('confidence and margin thresholds')
-    expect(metricExplanation('traceability_rate')?.warning).toContain('does not prove')
-    expect(metricExplanation('success_rate')?.warning).toContain('does not mean 100% answer accuracy')
-    expect(toolStatusLabel('rejected')).toContain('مرفوض بشكل متوقع')
-  })
-
-  it('marks test embeddings and historical offline runs without raw tool JSON', () => {
-    expect(isOfflineTestEmbedding('hashing-test-v1:384')).toBe(true)
-    const html = renderToStaticMarkup(<EvaluationDetail item={evaluation} />)
-    expect(html).toContain('نموذج تضمين اختباري غير إنتاجي')
-    expect(html).toContain('لا توجد تقييمات بشرية للإجابات حتى الآن')
-    expect(html).toContain('مرفوض بشكل متوقع')
-    expect(html).not.toContain('{&quot;rejected&quot;')
-    expect(html).toContain('لا يثبت حالة نسخة الإنتاج الحالية')
-    expect(html).toContain('Copy')
-  })
-
-  it('keeps the how-to-read panel visible and accessible', () => {
-    const html = renderToStaticMarkup(<HowToReadEvaluations />)
-    expect(html).toContain('كيف أقرأ نتائج التقييم؟')
+  it('renders only the six approved summary metrics and run context', () => {
+    const html = renderToStaticMarkup(<EvaluationSummary item={evaluation} />)
+    expect(html).toContain('Intent Accuracy')
     expect(html).toContain('Recall@K')
-    expect(html).toContain('Offline runs are not production validation')
+    expect(html).toContain('Top 1 Accuracy')
+    expect(html).toContain('Valid Tool Success')
+    expect(html).toContain('Unexpected Tool Failures')
+    expect(html).toContain('LLM Technical Availability')
+    expect(html).toContain('Offline test embedding')
+    expect(html).not.toContain('should-not-be-visible-in-summary')
+    expect(html).not.toContain('status_counts')
+  })
+
+  it('keeps the honest offline disclaimer and short metric definitions', () => {
+    expect(isOfflineTestEmbedding('hashing-test-v1:384')).toBe(true)
+    expect(metricExplanation('recall_at_k')).toContain('أول K')
+    const html = renderToStaticMarkup(<EvaluationDisclaimer />)
+    expect(html).toContain('does not automatically prove current production performance')
+  })
+
+  it('keeps only Room Types, Rooms, and Bookings in primary Hotel Data tabs', () => {
+    expect(PRIMARY_HOTEL_DATA_TABS.map(([, label]) => label)).toEqual([
+      'Room Types', 'Rooms', 'Bookings',
+    ])
   })
 })

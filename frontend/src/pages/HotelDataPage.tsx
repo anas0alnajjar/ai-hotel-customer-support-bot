@@ -11,7 +11,13 @@ import type {
   RoomType,
 } from '../types'
 
-type Tab = 'room-types' | 'rooms' | 'bookings' | 'demo'
+type Tab = 'room-types' | 'rooms' | 'bookings'
+
+export const PRIMARY_HOTEL_DATA_TABS: ReadonlyArray<readonly [Tab, string]> = [
+  ['room-types', 'Room Types'],
+  ['rooms', 'Rooms'],
+  ['bookings', 'Bookings'],
+]
 
 const roomStatuses = ['available', 'occupied', 'cleaning', 'maintenance', 'out_of_service']
 const bookingStatuses = ['pending', 'confirmed', 'checked_in', 'checked_out', 'cancelled']
@@ -26,15 +32,10 @@ export function HotelDataPage() {
     <PageHeader
       eyebrow="SIMULATED HOTEL OPERATIONS"
       title="بيانات الفندق · Hotel Data"
-      description="إدارة بيانات MySQL المستخدمة فعلياً في أدوات المساعد والعرض الأكاديمي."
+      description="إدارة أنواع الغرف والغرف والحجوزات التي تستخدمها أدوات الفندق المحاكية."
     />
     <nav className="hotel-tabs" aria-label="Hotel data sections">
-      {([
-        ['room-types', 'Room Types'],
-        ['rooms', 'Rooms'],
-        ['bookings', 'Bookings'],
-        ['demo', 'Demo Credentials'],
-      ] as const).map(([value, label]) => (
+      {PRIMARY_HOTEL_DATA_TABS.map(([value, label]) => (
         <button
           className={tab === value ? 'active' : ''}
           key={value}
@@ -45,7 +46,6 @@ export function HotelDataPage() {
     {tab === 'room-types' && <RoomTypesPanel />}
     {tab === 'rooms' && <RoomsPanel />}
     {tab === 'bookings' && <BookingsPanel />}
-    {tab === 'demo' && <DemoPanel />}
   </>
 }
 
