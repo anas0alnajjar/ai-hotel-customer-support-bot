@@ -50,6 +50,20 @@ def test_retrieval_reranks_clear_arabic_word_forms_ahead_of_weak_semantics() -> 
         },
         faiss_vector_id=1,
     )
+    housekeeping = StoredChunk(
+        id=uuid4(),
+        revision_id=uuid4(),
+        index_version_id=index_id,
+        chunk_index=0,
+        text="تقدم خدمة تنظيف الغرف يومياً، ويمكن طلب وقت مفضل للتنظيف.",
+        metadata={
+            "document_id": str(uuid4()),
+            "title": "التنظيف والغسيل",
+            "language": "ar",
+            "revision_version": 1,
+        },
+        faiss_vector_id=2,
+    )
     index = IndexVersionSnapshot(
         id=index_id,
         embedding_model="test-model",
@@ -57,8 +71,8 @@ def test_retrieval_reranks_clear_arabic_word_forms_ahead_of_weak_semantics() -> 
         chunk_config={},
         checksum="checksum",
         artifact_path="active",
-        document_count=2,
-        chunk_count=2,
+        document_count=3,
+        chunk_count=3,
         status=IndexStatus.ACTIVE,
         build_error=None,
         activated_at=now,
@@ -69,7 +83,7 @@ def test_retrieval_reranks_clear_arabic_word_forms_ahead_of_weak_semantics() -> 
         async def get_active_index(
             self,
         ) -> tuple[IndexVersionSnapshot, tuple[StoredChunk, ...]]:
-            return index, (breakfast, pets)
+            return index, (breakfast, pets, housekeeping)
 
     class Embedder:
         model_id = "test-model"
@@ -83,7 +97,7 @@ def test_retrieval_reranks_clear_arabic_word_forms_ahead_of_weak_semantics() -> 
 
         def search(self, **values: object) -> tuple[tuple[int, float], ...]:
             self.requested_top_k = int(values["top_k"])
-            return ((1, 0.90), (0, 0.60))
+            return ((1, 0.90), (2, 0.70), (0, 0.60))
 
     store = Store()
     service = KnowledgeRetrievalService(  # type: ignore[arg-type]
@@ -96,7 +110,7 @@ def test_retrieval_reranks_clear_arabic_word_forms_ahead_of_weak_semantics() -> 
 
     result = asyncio.run(service.retrieve("شو وقت تقديم الفطور؟"))
 
-    assert store.requested_top_k == 2
+    assert store.requested_top_k == 3
     assert result.sufficient is True
     assert len(result.evidence) == 1
     assert result.evidence[0].title == "خدمة الإفطار"

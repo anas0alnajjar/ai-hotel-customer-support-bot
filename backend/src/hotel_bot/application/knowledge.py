@@ -26,12 +26,36 @@ from hotel_bot.domain.knowledge.models import (
     SupportedLanguage,
 )
 
+RETRIEVAL_STOP_TERMS = frozenset(
+    {
+        "شو",
+        "وقت",
+        "موعد",
+        "مواعيد",
+        "تقديم",
+        "يقدم",
+        "تقدم",
+        "خدمة",
+        "خدمات",
+        "معلومات",
+        "what",
+        "when",
+        "time",
+        "times",
+        "provide",
+        "provides",
+        "service",
+        "services",
+        "information",
+    }
+)
+
 
 def _retrieval_tokens(text: str) -> frozenset[str]:
     return frozenset(
         token
         for token in re.findall(r"[\w\u0600-\u06ff]+", normalize_text(text))
-        if len(token) >= 3
+        if len(token) >= 3 and token not in RETRIEVAL_STOP_TERMS
     )
 
 
