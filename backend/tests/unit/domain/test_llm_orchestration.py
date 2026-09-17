@@ -30,7 +30,6 @@ from hotel_bot.domain.llm.enums import AnswerBasis, LLMRequestKind
 from hotel_bot.domain.llm.errors import LLMBudgetExceededError, LLMUnavailableError
 from hotel_bot.domain.llm.models import (
     GroundedAnswer,
-    KnowledgeSearchQuery,
     LLMRequest,
     LLMResponse,
     LLMRunRecord,
@@ -609,13 +608,7 @@ def test_successful_availability_fallback_is_concise_and_never_dumps_json() -> N
     assert tool_audit.records[0].result_status.value == "succeeded"
 
 
-def test_valid_tool_proposal_executes_then_returns_validated_structured_answer() -> None:
-    final = GroundedAnswer(
-        language="ar",
-        text="لدينا غرف Deluxe وSuite.",
-        basis=AnswerBasis.TOOL,
-        tool_names=("list_room_types",),
-    )
+def test_valid_tool_proposal_executes_with_one_model_call() -> None:
     provider = FakeProvider(
         [
             response(
@@ -626,21 +619,19 @@ def test_valid_tool_proposal_executes_then_returns_validated_structured_answer()
                         arguments={},
                     ),
                 )
-            ),
-            response(text=final.model_dump_json()),
+            )
         ]
     )
     service, llm_audit, tool_audit = orchestrator(provider)
 
     result = asyncio.run(service.handle(envelope(), routing(IntentCode.ROOM_TYPES)))
 
-    assert result.answer == final
+    assert "فئات الغرف المتاحة" in result.answer.text
     assert result.tool_executed is True
     assert result.model_used is True
-    assert len(llm_audit.records) == 2
+    assert len(llm_audit.records) == 1
     assert len(tool_audit.records) == 1
     assert provider.requests[0].tools[0]["name"] == "list_room_types"
-    assert provider.requests[1].response_schema is not None
 
 
 def test_unknown_model_tool_is_rejected_and_audited_without_execution() -> None:
@@ -762,188 +753,6 @@ def test_arabic_word_forms_keep_relevant_breakfast_evidence_on_model_failure() -
     assert result.tool_executed is False
     assert len(llm_audit.records) == 1
     assert llm_audit.records[0].error_code == "llm_unavailable"
-    assert tool_audit.records == []
-
-
-def test_weak_semantic_match_is_rewritten_and_retrieved_without_topic_rules() -> None:
-    original_query = "أنا وخطيبتي بدنا غرفة وحدة، شو المطلوب؟"
-    rewritten_query = "متطلبات حجز غرفة مشتركة لخطيبين"
-    semantic_query = (
-        f"{rewritten_query}\nعلاقة خطوبة\nغرفة مشتركة\nالوثائق المطلوبة"
-    )
-    weak = RetrievalResult(
-        query=original_query,
-        index_version_id=uuid4(),
-        evidence=(
-            RetrievalEvidence(
-                chunk_id=uuid4(),
-                document_id=uuid4(),
-                revision_id=uuid4(),
-                title="General facilities",
-                language="ar",
-                text="تتوفر مرافق عامة للنزلاء.",
-                score=0.40,
-                rank=1,
-            ),
-        ),
-        sufficient=True,
-        reason_code="evidence_found",
-    )
-    relevant_id = UUID("90000000-0000-0000-0000-000000000003")
-    relevant = RetrievalResult(
-        query=semantic_query,
-        index_version_id=weak.index_version_id,
-        evidence=(
-            RetrievalEvidence(
-                chunk_id=relevant_id,
-                document_id=uuid4(),
-                revision_id=uuid4(),
-                title="Temporary approved policy",
-                language="ar",
-                text="يلزم تقديم الوثائق المعتمدة عند تسجيل الوصول.",
-                score=0.91,
-                rank=1,
-            ),
-        ),
-        sufficient=True,
-        reason_code="evidence_found",
-    )
-    grounded = GroundedAnswer(
-        language="ar",
-        text="يلزم تقديم الوثائق المعتمدة عند تسجيل الوصول.",
-        basis=AnswerBasis.KNOWLEDGE,
-        evidence_ids=(str(relevant_id),),
-    )
-    provider = FakeProvider(
-        [
-            response(
-                text=KnowledgeSearchQuery(
-                    language="ar",
-                    query=rewritten_query,
-                    material_conditions=(
-                            "علاقة خطوبة",
-                            "غرفة مشتركة",
-                            "الوثائق المطلوبة",
-                    ),
-                ).model_dump_json()
-            ),
-            response(text=grounded.model_dump_json()),
-        ]
-    )
-    retrieval = FakeRetrieval(weak, {semantic_query: relevant})
-    service, llm_audit, tool_audit = orchestrator(provider, retrieval)
-
-    result = asyncio.run(
-        service.handle(
-            envelope(original_query),
-            routing(
-                IntentCode.HOTEL_INFO,
-                decision=RoutingDecision.KNOWLEDGE_CANDIDATE,
-            ),
-        )
-    )
-
-    assert result.answer == grounded
-    assert retrieval.queries == [original_query, semantic_query]
-    assert [item.kind for item in provider.requests] == [
-        LLMRequestKind.KNOWLEDGE_QUERY_REWRITE,
-        LLMRequestKind.FINAL_ANSWER,
-    ]
-    assert provider.requests[0].max_output_tokens == 512
-    assert len(llm_audit.records) == 2
-    assert tool_audit.records == []
-
-
-def test_rewritten_evidence_is_used_when_final_answer_is_rate_limited() -> None:
-    original_query = "أنا وخطيبتي بدنا غرفة وحدة، شو المطلوب؟"
-    rewritten_query = "متطلبات حجز غرفة مشتركة لخطيبين"
-    semantic_query = (
-        f"{rewritten_query}\nعلاقة خطوبة\nغرفة مشتركة\nمتطلبات الحجز"
-    )
-    weak_id = UUID("90000000-0000-0000-0000-000000000004")
-    relevant_id = UUID("90000000-0000-0000-0000-000000000005")
-    weak = RetrievalResult(
-        query=original_query,
-        index_version_id=uuid4(),
-        evidence=(
-            RetrievalEvidence(
-                chunk_id=weak_id,
-                document_id=uuid4(),
-                revision_id=uuid4(),
-                title="Accessibility facilities",
-                language="ar",
-                text="تتوفر غرف مهيأة لسهولة الوصول.",
-                score=0.40,
-                rank=1,
-            ),
-        ),
-        sufficient=True,
-        reason_code="evidence_found",
-    )
-    relevant_text = (
-        "يلزم إبراز وثيقة زواج رسمية سارية عند تسجيل الوصول "
-        "لحجز غرفة مشتركة."
-    )
-    rewritten = RetrievalResult(
-        query=semantic_query,
-        index_version_id=weak.index_version_id,
-        evidence=(
-            RetrievalEvidence(
-                chunk_id=relevant_id,
-                document_id=uuid4(),
-                revision_id=uuid4(),
-                title="Approved reservation policy",
-                language="ar",
-                text=relevant_text,
-                score=0.39,
-                rank=1,
-            ),
-        ),
-        sufficient=True,
-        reason_code="evidence_found",
-    )
-    provider = FakeProvider(
-        [
-            response(
-                text=KnowledgeSearchQuery(
-                    language="ar",
-                    query=rewritten_query,
-                    material_conditions=(
-                        "علاقة خطوبة",
-                        "غرفة مشتركة",
-                        "متطلبات الحجز",
-                    ),
-                ).model_dump_json()
-            ),
-            LLMUnavailableError("429 RESOURCE_EXHAUSTED"),
-        ]
-    )
-    retrieval = FakeRetrieval(weak, {semantic_query: rewritten})
-    service, llm_audit, tool_audit = orchestrator(provider, retrieval)
-
-    result = asyncio.run(
-        service.handle(
-            envelope(original_query),
-            routing(
-                IntentCode.HOTEL_INFO,
-                decision=RoutingDecision.KNOWLEDGE_CANDIDATE,
-            ),
-        )
-    )
-
-    assert result.reason_code == "knowledge_model_fallback"
-    assert result.answer.basis is AnswerBasis.KNOWLEDGE
-    assert result.answer.text == relevant_text
-    assert result.answer.evidence_ids == (str(relevant_id),)
-    assert str(weak_id) not in result.answer.evidence_ids
-    assert result.tool_executed is False
-    assert retrieval.queries == [original_query, semantic_query]
-    assert [item.kind for item in provider.requests] == [
-        LLMRequestKind.KNOWLEDGE_QUERY_REWRITE,
-        LLMRequestKind.FINAL_ANSWER,
-    ]
-    assert len(llm_audit.records) == 2
-    assert llm_audit.records[-1].error_code == "llm_unavailable"
     assert tool_audit.records == []
 
 

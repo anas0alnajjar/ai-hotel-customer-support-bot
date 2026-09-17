@@ -29,7 +29,6 @@ from hotel_bot.domain.llm.errors import (
 )
 from hotel_bot.domain.llm.models import (
     GroundedAnswer,
-    KnowledgeSearchQuery,
     LLMRequest,
     LLMResponse,
     LLMRunRecord,
@@ -183,7 +182,6 @@ ACTION_TOOL_BY_INTENT: dict[IntentCode, str] = {
     IntentCode.MAINTENANCE_REQUEST: "create_maintenance_request",
     IntentCode.SERVICE_REQUEST_STATUS: "get_service_request_status",
 }
-KNOWLEDGE_QUERY_REWRITE_TRIGGER_SCORE = 0.55
 GENERIC_RETRIEVAL_TERMS = frozenset(
     {
         "hotel",
@@ -531,41 +529,6 @@ class HybridOrchestrator:
             result = await self._retrieval.retrieve(search_query)
         except Exception:
             return self._unavailable(context, "knowledge_retrieval_failed")
-        strongest_score = result.evidence[0].score if result.evidence else -1.0
-        if (
-            routing.normalized_knowledge_query is None
-            and strongest_score < KNOWLEDGE_QUERY_REWRITE_TRIGGER_SCORE
-        ):
-            try:
-                rewrite_response = await self._llm.generate(
-                    message_id=context.current_message.id,
-                    request=self._prompts.knowledge_search_query(context),
-                    budget=budget,
-                )
-                if not rewrite_response.text:
-                    raise LLMContractError("model returned no knowledge search query")
-                rewritten = KnowledgeSearchQuery.model_validate_json(
-                    rewrite_response.text
-                )
-                if rewritten.language != context.current_message.language:
-                    raise LLMContractError(
-                        "model changed the knowledge search query language"
-                    )
-                semantic_query = "\n".join(
-                    (
-                        rewritten.query,
-                        *rewritten.material_conditions,
-                    )
-                )
-                rewritten_result = await self._retrieval.retrieve(
-                    semantic_query
-                )
-                if rewritten_result.sufficient:
-                    result = rewritten_result
-                    search_query = semantic_query
-                    material_conditions = rewritten.material_conditions
-            except (LLMError, ValidationError, ValueError):
-                pass
         result = _validate_retrieval_evidence(
             result,
             query=search_query,
@@ -641,6 +604,7 @@ class HybridOrchestrator:
         definition = self._registry.resolve(tool_name)
         if definition is None:
             return self._unavailable(context, "action_tool_unavailable")
+        proposal_used = trusted_tool_arguments is None
         if trusted_tool_arguments is not None:
             execution_name = tool_name
             execution_arguments = dict(trusted_tool_arguments)
@@ -679,6 +643,18 @@ class HybridOrchestrator:
         )
         if execution.status is not ToolExecutionStatus.SUCCEEDED or execution.output is None:
             return self._tool_failure(context, execution)
+        if proposal_used:
+            return OrchestrationResult(
+                answer=GroundedAnswer(
+                    language=context.state.language,
+                    text=self._tool_fallback_text(context, execution),
+                    basis=AnswerBasis.TOOL,
+                    tool_names=(execution.tool_name,),
+                ),
+                tool_executed=True,
+                model_used=True,
+                reason_code="validated_tool_answer",
+            )
         output_payload = execution.output.model_dump(mode="json")
         final_request = self._prompts.final_answer(
             context,
