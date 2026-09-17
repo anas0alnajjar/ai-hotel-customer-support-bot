@@ -714,6 +714,57 @@ def test_knowledge_answer_cannot_cite_evidence_outside_allow_list() -> None:
     assert result.answer.text == retrieved.evidence[0].text
 
 
+def test_arabic_word_forms_keep_relevant_breakfast_evidence_on_model_failure() -> None:
+    query = "شو وقت تقديم الفطور؟"
+    evidence_id = uuid4()
+    evidence_text = (
+        "يقدم مطعم الياسمين بوفيه إفطار يومياً من الساعة السادسة والنصف "
+        "حتى العاشرة والنصف صباحاً."
+    )
+    retrieved = RetrievalResult(
+        query=query,
+        index_version_id=uuid4(),
+        evidence=(
+            RetrievalEvidence(
+                chunk_id=evidence_id,
+                document_id=uuid4(),
+                revision_id=uuid4(),
+                title="خدمة الإفطار",
+                language="ar",
+                text=evidence_text,
+                score=0.91,
+                rank=1,
+            ),
+        ),
+        sufficient=True,
+        reason_code="evidence_found",
+    )
+    provider = FakeProvider([LLMUnavailableError("429 RESOURCE_EXHAUSTED")])
+    service, llm_audit, tool_audit = orchestrator(
+        provider,
+        FakeRetrieval(retrieved),
+    )
+
+    result = asyncio.run(
+        service.handle(
+            envelope(query),
+            routing(
+                IntentCode.HOTEL_INFO,
+                decision=RoutingDecision.KNOWLEDGE_CANDIDATE,
+            ),
+        )
+    )
+
+    assert result.reason_code == "knowledge_model_fallback"
+    assert result.answer.basis is AnswerBasis.KNOWLEDGE
+    assert result.answer.text == evidence_text
+    assert result.answer.evidence_ids == (str(evidence_id),)
+    assert result.tool_executed is False
+    assert len(llm_audit.records) == 1
+    assert llm_audit.records[0].error_code == "llm_unavailable"
+    assert tool_audit.records == []
+
+
 def test_weak_semantic_match_is_rewritten_and_retrieved_without_topic_rules() -> None:
     original_query = "أنا وخطيبتي بدنا غرفة وحدة، شو المطلوب؟"
     rewritten_query = "متطلبات حجز غرفة مشتركة لخطيبين"

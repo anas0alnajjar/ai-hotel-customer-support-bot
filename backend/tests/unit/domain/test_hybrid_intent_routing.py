@@ -296,29 +296,21 @@ def test_clear_breakfast_information_bypasses_ai_and_remains_knowledge(
     assert provider.requests == []
 
 
-def test_one_word_breakfast_is_focused_ambiguity(
+def test_one_word_breakfast_uses_deterministic_knowledge_path(
     production_router: SafeIntentRouter,
 ) -> None:
     text = "الفطور؟"
     values = parameters(text)
     initial = production_router.route(text, "ar", parameters=values)
-    decision = HybridIntentDecision(
-        mode="ambiguous",
-        confidence=0.93,
-        language="ar",
-        needs_clarification=True,
-        clarification_question="هل تريد معرفة مواعيد الفطور أم طلب فطور للغرفة؟",
-    )
-    provider = OfflineProvider([response(decision)])
+    provider = OfflineProvider([])
     service, _ = hybrid_service(provider)
 
     resolved = analyze(service, envelope(text), initial, values)
-    answer, tool_events = controlled_answer(envelope(text), resolved.routing)
 
-    assert resolved.routing.decision is RoutingDecision.CLARIFY
-    assert answer == decision.clarification_question
-    assert tool_events == 0
-    assert len(provider.requests) == 1
+    assert resolved.ai_used is False
+    assert resolved.routing.prediction.intent is IntentCode.HOTEL_INFO
+    assert resolved.routing.decision is RoutingDecision.KNOWLEDGE_CANDIDATE
+    assert provider.requests == []
 
 
 def test_conflicting_room_policy_is_resolved_to_knowledge_without_tool(

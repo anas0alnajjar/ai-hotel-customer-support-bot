@@ -3,6 +3,7 @@
 import asyncio
 import re
 from collections.abc import Mapping
+from difflib import SequenceMatcher
 from time import perf_counter
 from typing import Protocol
 from uuid import UUID
@@ -382,6 +383,26 @@ def _meaningful_retrieval_tokens(text: str) -> frozenset[str]:
     )
 
 
+def _tokens_match(left: str, right: str) -> bool:
+    """Accept exact or close word forms without topic-specific aliases."""
+
+    if left == right:
+        return True
+    if min(len(left), len(right)) < 4:
+        return False
+    return SequenceMatcher(None, left, right).ratio() >= 0.72
+
+
+def _overlap_count(
+    query_tokens: frozenset[str],
+    evidence_tokens: frozenset[str],
+) -> int:
+    return sum(
+        any(_tokens_match(query_token, evidence_token) for evidence_token in evidence_tokens)
+        for query_token in query_tokens
+    )
+
+
 def _validate_retrieval_evidence(
     result: RetrievalResult,
     *,
@@ -400,9 +421,9 @@ def _validate_retrieval_evidence(
         evidence_tokens = _meaningful_retrieval_tokens(
             f"{evidence.title}\n{evidence.text}"
         )
-        lexical_overlap = len(query_tokens & evidence_tokens)
+        lexical_overlap = _overlap_count(query_tokens, evidence_tokens)
         condition_coverage = sum(
-            bool(tokens & evidence_tokens)
+            _overlap_count(tokens, evidence_tokens) > 0
             for tokens in condition_tokens
             if tokens
         )

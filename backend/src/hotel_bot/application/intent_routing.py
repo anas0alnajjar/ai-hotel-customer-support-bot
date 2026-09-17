@@ -247,9 +247,9 @@ class HybridIntentRoutingService:
             return True
         if (
             routing.decision is RoutingDecision.KNOWLEDGE_CANDIDATE
-            and len(context.current_message.text.split()) <= 2
+            and prediction.intent is IntentCode.HOTEL_INFO
         ):
-            return True
+            return False
         if (
             prediction.confidence < self._confidence_threshold
             or prediction.margin < self._margin_threshold
