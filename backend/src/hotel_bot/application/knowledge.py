@@ -2,10 +2,13 @@
 
 import hashlib
 import json
+import re
 from collections.abc import Mapping, Sequence
+from difflib import SequenceMatcher
 from typing import Protocol, cast
 from uuid import UUID, uuid4
 
+from hotel_bot.domain.intent.normalization import normalize_text
 from hotel_bot.domain.knowledge.chunking import chunk_text, validate_content
 from hotel_bot.domain.knowledge.enums import SourceFormat
 from hotel_bot.domain.knowledge.errors import IndexUnavailableError, KnowledgeValidationError
@@ -22,6 +25,33 @@ from hotel_bot.domain.knowledge.models import (
     StoredChunk,
     SupportedLanguage,
 )
+
+
+def _retrieval_tokens(text: str) -> frozenset[str]:
+    return frozenset(
+        token
+        for token in re.findall(r"[\w\u0600-\u06ff]+", normalize_text(text))
+        if len(token) >= 3
+    )
+
+
+def _token_match(left: str, right: str) -> bool:
+    if left == right:
+        return True
+    if min(len(left), len(right)) < 4:
+        return False
+    return SequenceMatcher(None, left, right).ratio() >= 0.72
+
+
+def _lexical_overlap(query: str, chunk: StoredChunk) -> int:
+    query_tokens = _retrieval_tokens(query)
+    evidence_tokens = _retrieval_tokens(
+        f"{chunk.metadata.get('title', '')}\n{chunk.text}"
+    )
+    return sum(
+        any(_token_match(query_token, evidence_token) for evidence_token in evidence_tokens)
+        for query_token in query_tokens
+    )
 
 
 class EmbeddingProvider(Protocol):
@@ -398,7 +428,19 @@ class KnowledgeRetrievalService:
             relative_path=index.artifact_path,
             expected_checksum=index.checksum,
             query_vector=self._embedder.embed_query(normalized_query),
-            top_k=min(index.chunk_count, self._top_k * 3),
+            top_k=index.chunk_count,
+        )
+        hits = tuple(
+            sorted(
+                hits,
+                key=lambda hit: (
+                    _lexical_overlap(normalized_query, by_vector_id[hit[0]])
+                    if hit[0] in by_vector_id
+                    else 0,
+                    hit[1],
+                ),
+                reverse=True,
+            )
         )
         evidence: list[RetrievalEvidence] = []
         for vector_id, score in hits:
