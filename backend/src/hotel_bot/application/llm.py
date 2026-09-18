@@ -175,12 +175,10 @@ class AuditedLLMService:
 
 
 ACTION_TOOL_BY_INTENT: dict[IntentCode, str] = {
-    IntentCode.ROOM_TYPES: "list_room_types",
     IntentCode.ROOM_AVAILABILITY: "check_room_availability",
     IntentCode.BOOKING_LOOKUP: "lookup_booking",
-    IntentCode.ROOM_SERVICE_REQUEST: "create_room_service_request",
-    IntentCode.MAINTENANCE_REQUEST: "create_maintenance_request",
-    IntentCode.SERVICE_REQUEST_STATUS: "get_service_request_status",
+    IntentCode.ROOM_SERVICE_REQUEST: "create_service_request",
+    IntentCode.MAINTENANCE_REQUEST: "create_service_request",
 }
 GENERIC_RETRIEVAL_TERMS = frozenset(
     {
@@ -897,23 +895,12 @@ class HybridOrchestrator:
                 f"({available} rooms available){amenity_clause}. "
                 "Tell me if you want to continue with a booking."
             )
-        if execution.tool_name in {
-            "create_room_service_request",
-            "create_maintenance_request",
-        }:
+        if execution.tool_name == "create_service_request":
             tracking_code = payload.get("tracking_code", "")
             return (
                 f"تم إنشاء الطلب بنجاح. رمز التتبع: {tracking_code}."
                 if language == "ar"
                 else f"The request was created. Tracking code: {tracking_code}."
-            )
-        if execution.tool_name == "get_service_request_status":
-            tracking_code = payload.get("tracking_code", "")
-            status = payload.get("status", "")
-            return (
-                f"حالة الطلب {tracking_code}: {status}."
-                if language == "ar"
-                else f"Request {tracking_code} is {status}."
             )
         if execution.tool_name == "lookup_booking":
             reference = payload.get("reference", "")
@@ -924,17 +911,5 @@ class HybridOrchestrator:
                 f"حالة الحجز {reference}: {status}، من {check_in} إلى {check_out}."
                 if language == "ar"
                 else f"Booking {reference} is {status}, from {check_in} to {check_out}."
-            )
-        if execution.tool_name == "list_room_types":
-            room_types = payload.get("room_types") or []
-            names = [
-                str(item.get("name_ar") if language == "ar" else item.get("name_en"))
-                for item in room_types[:3]
-            ]
-            rendered_names = "، ".join(names)
-            return (
-                f"فئات الغرف المتاحة: {rendered_names}."
-                if language == "ar"
-                else f"Available room types: {rendered_names}."
             )
         return "تم تنفيذ العملية بنجاح." if language == "ar" else "The operation succeeded."

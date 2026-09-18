@@ -14,7 +14,7 @@ from hotel_bot.application.guest_flows import (
     redact_sensitive_text,
     sanitize_context,
 )
-from hotel_bot.application.hotel_tools import RoomServiceRequestInput
+from hotel_bot.application.hotel_tools import ServiceRequestInput
 from hotel_bot.domain.conversation.enums import (
     ActiveWorkflow,
     MessageDirection,
@@ -364,7 +364,7 @@ def test_room_service_followup_builds_valid_confirmable_arguments() -> None:
     assert second["description"] == "10 اريد طعام لغرفتي"
     assert routing.missing_parameters == ()
     assert routing.requires_confirmation is True
-    assert RoomServiceRequestInput.model_validate(arguments)
+    assert ServiceRequestInput.model_validate(arguments)
 
 
 def test_room_service_missing_slots_keep_workflow_order() -> None:

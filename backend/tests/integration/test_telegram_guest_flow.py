@@ -213,12 +213,7 @@ class RecordingOrchestrator:
             )
 
         if confirmed:
-            tool_name = (
-                "create_maintenance_request"
-                if routing.prediction.intent
-                is IntentCode.MAINTENANCE_REQUEST
-                else "create_room_service_request"
-            )
+            tool_name = "create_service_request"
             return OrchestrationResult(
                 answer=GroundedAnswer(
                     language=context.state.language,

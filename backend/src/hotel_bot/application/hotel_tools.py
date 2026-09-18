@@ -1,8 +1,7 @@
-"""Strict schemas and handlers for the six simulated hotel tools."""
+"""Strict schemas and handlers for the three simulated hotel tools."""
 
-from collections.abc import Awaitable, Callable
 from datetime import date
-from typing import Annotated, Literal, Protocol, Self, cast
+from typing import Annotated, Protocol, Self
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, StrictInt, model_validator
 
@@ -10,21 +9,16 @@ from hotel_bot.domain.hotel.enums import ServiceRequestType, Urgency
 from hotel_bot.domain.hotel.models import (
     AvailabilityResult,
     BookingSummary,
-    RoomTypeSnapshot,
     ServiceRequestCreationResult,
-    ServiceRequestSnapshot,
 )
 from hotel_bot.domain.tools.enums import ToolCaller, ToolEffect
 from hotel_bot.domain.tools.models import RegisteredTool
 from hotel_bot.domain.tools.registry import ToolDefinition, ToolRegistry
 
-ToolHandler = Callable[[BaseModel], Awaitable[BaseModel]]
 SecretValue = Annotated[SecretStr, Field(min_length=1, max_length=128)]
 
 
 class HotelToolService(Protocol):
-    async def list_room_types(self) -> tuple[RoomTypeSnapshot, ...]: ...
-
     async def check_availability(
         self,
         *,
@@ -52,37 +46,12 @@ class HotelToolService(Protocol):
         verification_value: str | None = None,
     ) -> ServiceRequestCreationResult: ...
 
-    async def get_service_request_status(
-        self, tracking_code: str, verification_value: str
-    ) -> ServiceRequestSnapshot: ...
-
-
 class ToolInput(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
 
 class ToolOutput(BaseModel):
     model_config = ConfigDict(frozen=True)
-
-
-class ListRoomTypesInput(ToolInput):
-    pass
-
-
-class RoomTypeItem(ToolOutput):
-    code: str
-    name_ar: str
-    name_en: str
-    description_ar: str
-    description_en: str
-    capacity_adults: int
-    capacity_children: int
-    amenities: tuple[str, ...]
-
-
-class RoomTypesOutput(ToolOutput):
-    room_types: tuple[RoomTypeItem, ...]
-    simulation: bool = True
 
 
 class AvailabilityInput(ToolInput):
@@ -131,9 +100,11 @@ class BookingLookupOutput(ToolOutput):
 
 
 class ServiceRequestInput(ToolInput):
+    request_type: ServiceRequestType
     category: Annotated[str, Field(min_length=2, max_length=64, pattern=r"^[a-z_]+$")]
     room_number: Annotated[str, Field(min_length=1, max_length=16, pattern=r"^[A-Za-z0-9-]+$")]
     description: Annotated[str, Field(min_length=10, max_length=1000)]
+    urgency: Urgency = Urgency.NORMAL
     idempotency_key: Annotated[str, Field(min_length=16, max_length=128)]
     booking_reference: (
         Annotated[str, Field(min_length=6, max_length=32, pattern=r"^[\w-]+$")] | None
@@ -147,14 +118,6 @@ class ServiceRequestInput(ToolInput):
         return self
 
 
-class RoomServiceRequestInput(ServiceRequestInput):
-    urgency: Literal[Urgency.NORMAL, Urgency.HIGH] = Urgency.NORMAL
-
-
-class MaintenanceRequestInput(ServiceRequestInput):
-    urgency: Urgency = Urgency.NORMAL
-
-
 class ServiceRequestCreatedOutput(ToolOutput):
     tracking_code: str
     request_type: str
@@ -164,20 +127,6 @@ class ServiceRequestCreatedOutput(ToolOutput):
     created: bool
     requires_immediate_contact: bool
     emergency_guidance_code: str | None
-    simulation: bool = True
-
-
-class ServiceRequestStatusInput(ToolInput):
-    tracking_code: Annotated[str, Field(min_length=6, max_length=32, pattern=r"^[A-Za-z0-9-]+$")]
-    verification_value: SecretValue
-
-
-class ServiceRequestStatusOutput(ToolOutput):
-    tracking_code: str
-    request_type: str
-    category: str
-    urgency: str
-    status: str
     simulation: bool = True
 
 
@@ -194,25 +143,6 @@ def build_hotel_tool_registry(
     write_timeout_ms: int = 5_000,
 ) -> ToolRegistry:
     """Build the closed guest-assistant registry; no arbitrary dynamic tools are accepted."""
-
-    async def list_room_types(arguments: BaseModel) -> BaseModel:
-        _typed(arguments, ListRoomTypesInput)
-        room_types = await service.list_room_types()
-        return RoomTypesOutput(
-            room_types=tuple(
-                RoomTypeItem(
-                    code=item.code,
-                    name_ar=item.names["ar"],
-                    name_en=item.names["en"],
-                    description_ar=item.descriptions["ar"],
-                    description_en=item.descriptions["en"],
-                    capacity_adults=item.capacity_adults,
-                    capacity_children=item.capacity_children,
-                    amenities=item.amenities,
-                )
-                for item in room_types
-            )
-        )
 
     async def check_availability(arguments: BaseModel) -> BaseModel:
         values = _typed(arguments, AvailabilityInput)
@@ -259,73 +189,36 @@ def build_hotel_tool_registry(
             status=result.status.value,
         )
 
-    def create_request_handler(
-        request_type: ServiceRequestType,
-        input_model: type[ServiceRequestInput],
-    ) -> ToolHandler:
-        async def create_request(arguments: BaseModel) -> BaseModel:
-            values = cast(
-                RoomServiceRequestInput | MaintenanceRequestInput,
-                _typed(arguments, input_model),
-            )
-            result = await service.create_service_request(
-                request_type=request_type,
-                category=values.category,
-                room_number=values.room_number,
-                description=values.description,
-                urgency=values.urgency,
-                idempotency_key=values.idempotency_key,
-                booking_reference=values.booking_reference,
-                verification_value=(
-                    values.verification_value.get_secret_value()
-                    if values.verification_value
-                    else None
-                ),
-            )
-            return ServiceRequestCreatedOutput(
-                tracking_code=result.request.tracking_code,
-                request_type=result.request.request_type.value,
-                category=result.request.category,
-                urgency=result.request.urgency.value,
-                status=result.request.status.value,
-                created=result.created,
-                requires_immediate_contact=result.requires_immediate_contact,
-                emergency_guidance_code=result.emergency_guidance_code,
-            )
-
-        return create_request
-
-    async def get_request_status(arguments: BaseModel) -> BaseModel:
-        values = _typed(arguments, ServiceRequestStatusInput)
-        result = await service.get_service_request_status(
-            values.tracking_code, values.verification_value.get_secret_value()
+    async def create_request(arguments: BaseModel) -> BaseModel:
+        values = _typed(arguments, ServiceRequestInput)
+        result = await service.create_service_request(
+            request_type=values.request_type,
+            category=values.category,
+            room_number=values.room_number,
+            description=values.description,
+            urgency=values.urgency,
+            idempotency_key=values.idempotency_key,
+            booking_reference=values.booking_reference,
+            verification_value=(
+                values.verification_value.get_secret_value()
+                if values.verification_value
+                else None
+            ),
         )
-        return ServiceRequestStatusOutput(
-            tracking_code=result.tracking_code,
-            request_type=result.request_type.value,
-            category=result.category,
-            urgency=result.urgency.value,
-            status=result.status.value,
+        return ServiceRequestCreatedOutput(
+            tracking_code=result.request.tracking_code,
+            request_type=result.request.request_type.value,
+            category=result.request.category,
+            urgency=result.request.urgency.value,
+            status=result.request.status.value,
+            created=result.created,
+            requires_immediate_contact=result.requires_immediate_contact,
+            emergency_guidance_code=result.emergency_guidance_code,
         )
 
     allowed = frozenset({ToolCaller.ASSISTANT})
     return ToolRegistry(
         (
-            RegisteredTool(
-                ToolDefinition(
-                    name="list_room_types",
-                    description=(
-                        "List active room types and approved public attributes from hotel data."
-                    ),
-                    input_model=ListRoomTypesInput,
-                    output_model=RoomTypesOutput,
-                    allowed_callers=allowed,
-                    timeout_ms=read_timeout_ms,
-                    effect=ToolEffect.READ,
-                    requires_confirmation=False,
-                ),
-                list_room_types,
-            ),
             RegisteredTool(
                 ToolDefinition(
                     name="check_room_availability",
@@ -360,11 +253,12 @@ def build_hotel_tool_registry(
             ),
             RegisteredTool(
                 ToolDefinition(
-                    name="create_room_service_request",
+                    name="create_service_request",
                     description=(
-                        "Create one idempotent simulated room-service request after confirmation."
+                        "Create one idempotent simulated room-service or maintenance request "
+                        "after confirmation."
                     ),
-                    input_model=RoomServiceRequestInput,
+                    input_model=ServiceRequestInput,
                     output_model=ServiceRequestCreatedOutput,
                     allowed_callers=allowed,
                     timeout_ms=write_timeout_ms,
@@ -380,47 +274,7 @@ def build_hotel_tool_registry(
                         }
                     ),
                 ),
-                create_request_handler(ServiceRequestType.ROOM_SERVICE, RoomServiceRequestInput),
-            ),
-            RegisteredTool(
-                ToolDefinition(
-                    name="create_maintenance_request",
-                    description=(
-                        "Create one idempotent simulated maintenance request after confirmation."
-                    ),
-                    input_model=MaintenanceRequestInput,
-                    output_model=ServiceRequestCreatedOutput,
-                    allowed_callers=allowed,
-                    timeout_ms=write_timeout_ms,
-                    effect=ToolEffect.WRITE,
-                    requires_confirmation=True,
-                    sensitive_argument_fields=frozenset(
-                        {
-                            "room_number",
-                            "description",
-                            "idempotency_key",
-                            "booking_reference",
-                            "verification_value",
-                        }
-                    ),
-                ),
-                create_request_handler(ServiceRequestType.MAINTENANCE, MaintenanceRequestInput),
-            ),
-            RegisteredTool(
-                ToolDefinition(
-                    name="get_service_request_status",
-                    description=(
-                        "Return minimal simulated service-request status after verification."
-                    ),
-                    input_model=ServiceRequestStatusInput,
-                    output_model=ServiceRequestStatusOutput,
-                    allowed_callers=allowed,
-                    timeout_ms=read_timeout_ms,
-                    effect=ToolEffect.READ,
-                    requires_confirmation=False,
-                    sensitive_argument_fields=frozenset({"verification_value"}),
-                ),
-                get_request_status,
+                create_request,
             ),
         )
     )

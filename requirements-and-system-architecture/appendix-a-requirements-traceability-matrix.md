@@ -104,12 +104,11 @@ Every implementation ticket in later phases must reference at least one requirem
 
 | Requirements | Implementation evidence | Verification evidence | Status |
 |---|---|---|---|
-| FR-017 | Closed registry with strict input/output models, public declarations, caller allow-list, timeout, effect, confirmation, sensitive-field, and always-audit metadata | Six-definition registry contract and invalid configuration tests | Verified |
+| FR-017 | Closed registry with strict input/output models, public declarations, caller allow-list, timeout, effect, confirmation, sensitive-field, and always-audit metadata | Three-definition registry contract and invalid configuration tests | Verified |
 | FR-018 | `lookup_booking` secondary-verification tool and minimal masked output | Valid/wrong verification and audit redaction against seeded MySQL booking | Verified |
-| FR-019–FR-020 | `check_room_availability` and `list_room_types` wrappers over authoritative application services | Strict date/occupancy schema and five seeded room types returned through MySQL | Verified |
-| FR-021 | Confirmed `create_room_service_request` with backend idempotency key enforcement | Unconfirmed rejection plus two identical calls producing one row and stable tracking code | Verified |
-| FR-022 | Confirmed `create_maintenance_request` with explicit emergency guidance fields | Emergency safety request test requires immediate contact and makes no resolution claim | Verified |
-| FR-023 | `get_service_request_status` with secondary booking verification | Verified seeded request status through controlled executor | Verified |
+| FR-019–FR-020 | `check_room_availability` wrapper over the authoritative application service | Strict date and occupancy schema with structured availability output | Verified |
+| FR-021–FR-022 | Confirmed `create_service_request` with `request_type` and backend idempotency enforcement | Room-service and maintenance cases share one contract; emergency maintenance retains explicit guidance | Verified |
+| FR-023 | Service-request status lookup | Excluded from the simplified MVP tool surface | Out of MVP scope |
 | FR-024 | Executor-owned call limit, closed lookup, authorization before validation, forbidden extras, write confirmation, and timeout | Unknown, unauthorized, over-limit, invalid, unconfirmed, timeout, and handler-failure tests | Verified |
 | FR-025 | MySQL audit adapter in the same transaction as tool execution with redacted projections | Success/rejection/timeout records contain tool, status, latency, correlation, safe error, and no tested secrets | Verified |
 

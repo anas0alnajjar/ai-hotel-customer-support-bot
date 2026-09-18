@@ -153,18 +153,12 @@ This design keeps follow-up questions coherent without repeatedly transmitting t
 
 | Intent code | Meaning | Expected path |
 |---|---|---|
-| `hotel_info` | Facilities, location, check-in/out, policies, Wi-Fi, dining | RAG |
-| `room_types` | Room categories and attributes | Tool or authoritative catalog |
+| `hotel_info` | Facilities, room types, location, policies, schedules, Wi-Fi, and dining | RAG |
 | `room_availability` | Availability for dates and occupancy | Tool |
 | `booking_lookup` | Existing booking inquiry | Tool with verification |
-| `room_service_request` | Food, amenities, housekeeping request | Tool |
-| `maintenance_request` | Room equipment or maintenance problem | Tool |
-| `service_request_status` | Existing request status | Tool with verification |
-| `human_escalation` | Explicit human request or forced escalation | Escalation workflow |
-| `greeting_smalltalk` | Greeting or supported light conversation | Controlled response |
-| `unsupported` | Outside system scope | Fallback |
+| `service_request` | Room service or maintenance request, distinguished by `request_type` | Tool after confirmation |
 
-The taxonomy is intentionally small for measurable data quality. New labels require sufficient examples, a distinct business path, and an update to the evaluation set.
+Greetings and unsupported messages use controlled responses and are not presented as business intents.
 
 ## 6. Tool contracts v0.1
 
@@ -172,11 +166,7 @@ The taxonomy is intentionally small for measurable data quality. New labels requ
 |---|---|---|---|
 | `lookup_booking` | `booking_reference`, `verification_value` | format, rate limit, match, masking | minimal booking summary or safe not-found result |
 | `check_room_availability` | `check_in`, `check_out`, `adults` | future dates, check-out after check-in, occupancy | available room types; never a confirmation |
-| `list_room_types` | none; optional filters | approved catalog only | room type summaries |
-| `create_room_service_request` | `room_number`, `category`, `description` | room format, allowed category, length, idempotency | tracking code and recorded state |
-| `create_maintenance_request` | `room_number`, `category`, `description`, `urgency` | allowed values, emergency policy, idempotency | tracking code and recorded state |
-| `get_service_request_status` | `tracking_code`, `verification_value` | format, match, masking | status and safe public timeline |
-| `create_human_escalation` | `reason`, `conversation_id` | deduplication, configured contact workflow | escalation reference or contact instruction |
+| `create_service_request` | `request_type`, `room_number`, `category`, `description` | allowed type, room format, category, length, confirmation, idempotency | room-service or maintenance tracking code and recorded state |
 
 Tool outputs are structured application facts. The LLM may rephrase them but MUST NOT add statuses, prices, confirmations, or commitments absent from the result.
 

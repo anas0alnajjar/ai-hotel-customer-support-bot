@@ -10,8 +10,7 @@ from pydantic import BaseModel, ConfigDict
 from hotel_bot.application.hotel_tools import (
     AvailabilityInput,
     HotelToolService,
-    MaintenanceRequestInput,
-    RoomServiceRequestInput,
+    ServiceRequestInput,
     build_hotel_tool_registry,
 )
 from hotel_bot.application.tools import ControlledToolExecutor
@@ -99,14 +98,11 @@ def test_hotel_registry_exposes_exact_strict_contracts() -> None:
     expected_names = {
         "lookup_booking",
         "check_room_availability",
-        "list_room_types",
-        "create_room_service_request",
-        "create_maintenance_request",
-        "get_service_request_status",
+        "create_service_request",
     }
 
     assert {item.name for item in registry.definitions} == expected_names
-    assert len(registry.declarations()) == 6
+    assert len(registry.declarations()) == 3
     for definition in registry.definitions:
         assert definition.audit_policy is ToolAuditPolicy.ALWAYS
         assert definition.allowed_callers == frozenset({ToolCaller.ASSISTANT})
@@ -128,8 +124,9 @@ def test_tool_input_schemas_reject_extra_wrong_type_and_incomplete_verification(
             }
         )
     with pytest.raises(ValueError):
-        RoomServiceRequestInput.model_validate(
+        ServiceRequestInput.model_validate(
             {
+                "request_type": "room_service",
                 "category": "amenities",
                 "room_number": "101",
                 "description": "Deliver two additional towels.",
@@ -137,8 +134,9 @@ def test_tool_input_schemas_reject_extra_wrong_type_and_incomplete_verification(
                 "booking_reference": "BKG-2026-0001",
             }
         )
-    emergency = MaintenanceRequestInput.model_validate(
+    emergency = ServiceRequestInput.model_validate(
         {
+            "request_type": "maintenance",
             "category": "safety",
             "room_number": "304",
             "description": "A smoke alarm requires immediate staff inspection.",

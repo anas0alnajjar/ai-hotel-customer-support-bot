@@ -738,7 +738,6 @@ def _active_workflow_expected_reply(
             or LEADING_ROOM_PATTERN.search(text)
             or 1 <= len(words) <= 12
         )
-    return False
 
 
 def _forced_routing(
@@ -1506,7 +1505,6 @@ def _tool_arguments(
     """Select only allow-listed tool arguments for the routed intent."""
 
     fields = {
-        IntentCode.ROOM_TYPES: (),
         IntentCode.ROOM_AVAILABILITY: (
             "check_in",
             "check_out",
@@ -1536,10 +1534,6 @@ def _tool_arguments(
             "booking_reference",
             "verification_value",
         ),
-        IntentCode.SERVICE_REQUEST_STATUS: (
-            "tracking_code",
-            "verification_value",
-        ),
     }.get(
         intent,
         (),
@@ -1553,6 +1547,7 @@ def _tool_arguments(
 
     request_type = SERVICE_REQUEST_TYPE_BY_INTENT.get(intent)
     if request_type is not None:
+        selected["request_type"] = request_type.value
         category = resolve_service_category(
             request_type,
             str(selected.get("category", "")),

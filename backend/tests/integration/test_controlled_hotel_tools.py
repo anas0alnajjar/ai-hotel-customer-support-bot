@@ -16,9 +16,7 @@ from hotel_bot.application.hotel_operations import HotelOperationsService
 from hotel_bot.application.hotel_tools import (
     AvailabilityOutput,
     BookingLookupOutput,
-    RoomTypesOutput,
     ServiceRequestCreatedOutput,
-    ServiceRequestStatusOutput,
     build_hotel_tool_registry,
 )
 from hotel_bot.application.tools import ControlledToolExecutor
@@ -131,13 +129,6 @@ def test_controlled_hotel_tools_are_audited_private_and_idempotent() -> None:
                     SQLAlchemyToolAuditRepository(session),
                     max_calls_per_turn=10,
                 )
-                catalog = await executor.execute(
-                    ToolCall("list_room_types", {}),
-                    execution_context(1, confirmed=False),
-                )
-                assert catalog.status is ToolExecutionStatus.SUCCEEDED
-                assert len(cast(RoomTypesOutput, catalog.output).room_types) == 5
-
                 availability = await executor.execute(
                     ToolCall(
                         "check_room_availability",
@@ -148,7 +139,7 @@ def test_controlled_hotel_tools_are_audited_private_and_idempotent() -> None:
                             "children": 0,
                         },
                     ),
-                    execution_context(2, confirmed=False),
+                    execution_context(1, confirmed=False),
                 )
                 assert availability.status is ToolExecutionStatus.SUCCEEDED
                 assert cast(AvailabilityOutput, availability.output).simulation is True
@@ -161,7 +152,7 @@ def test_controlled_hotel_tools_are_audited_private_and_idempotent() -> None:
                             "verification_value": "0101",
                         },
                     ),
-                    execution_context(3, confirmed=False),
+                    execution_context(2, confirmed=False),
                 )
                 assert booking.status is ToolExecutionStatus.SUCCEEDED
                 assert cast(BookingLookupOutput, booking.output).guest_name_masked == "A*** A***"
@@ -174,12 +165,13 @@ def test_controlled_hotel_tools_are_audited_private_and_idempotent() -> None:
                             "verification_value": "wrong-secret",
                         },
                     ),
-                    execution_context(4, confirmed=False),
+                    execution_context(3, confirmed=False),
                 )
                 assert invalid_booking.status is ToolExecutionStatus.REJECTED
                 assert invalid_booking.error_code == "booking_not_found_or_verification_failed"
 
                 request_arguments = {
+                    "request_type": "room_service",
                     "category": "amenities",
                     "room_number": "102",
                     "description": "Deliver two additional towel sets to the room.",
@@ -187,19 +179,19 @@ def test_controlled_hotel_tools_are_audited_private_and_idempotent() -> None:
                     "idempotency_key": idempotency_key,
                 }
                 unconfirmed = await executor.execute(
-                    ToolCall("create_room_service_request", request_arguments),
-                    execution_context(5, confirmed=False),
+                    ToolCall("create_service_request", request_arguments),
+                    execution_context(4, confirmed=False),
                 )
                 assert unconfirmed.status is ToolExecutionStatus.REJECTED
                 assert unconfirmed.error_code == "tool_confirmation_required"
 
                 created = await executor.execute(
-                    ToolCall("create_room_service_request", request_arguments),
-                    execution_context(6, confirmed=True),
+                    ToolCall("create_service_request", request_arguments),
+                    execution_context(5, confirmed=True),
                 )
                 retried = await executor.execute(
-                    ToolCall("create_room_service_request", request_arguments),
-                    execution_context(7, confirmed=True),
+                    ToolCall("create_service_request", request_arguments),
+                    execution_context(6, confirmed=True),
                 )
                 created_output = cast(ServiceRequestCreatedOutput, created.output)
                 retried_output = cast(ServiceRequestCreatedOutput, retried.output)
@@ -211,8 +203,9 @@ def test_controlled_hotel_tools_are_audited_private_and_idempotent() -> None:
 
                 maintenance = await executor.execute(
                     ToolCall(
-                        "create_maintenance_request",
+                        "create_service_request",
                         {
+                            "request_type": "maintenance",
                             "category": "safety",
                             "room_number": "304",
                             "description": (
@@ -222,7 +215,7 @@ def test_controlled_hotel_tools_are_audited_private_and_idempotent() -> None:
                             "idempotency_key": maintenance_idempotency_key,
                         },
                     ),
-                    execution_context(8, confirmed=True),
+                    execution_context(7, confirmed=True),
                 )
                 maintenance_output = cast(ServiceRequestCreatedOutput, maintenance.output)
                 assert maintenance.status is ToolExecutionStatus.SUCCEEDED
@@ -230,16 +223,6 @@ def test_controlled_hotel_tools_are_audited_private_and_idempotent() -> None:
                 assert maintenance_output.emergency_guidance_code == (
                     "contact_reception_or_emergency_services"
                 )
-
-                request_status = await executor.execute(
-                    ToolCall(
-                        "get_service_request_status",
-                        {"tracking_code": "SR-SEED-0001", "verification_value": "0101"},
-                    ),
-                    execution_context(9, confirmed=False),
-                )
-                assert request_status.status is ToolExecutionStatus.SUCCEEDED
-                assert cast(ServiceRequestStatusOutput, request_status.output).status == "open"
 
             async with database.session() as session:
                 attempts = (
@@ -257,19 +240,18 @@ def test_controlled_hotel_tools_are_audited_private_and_idempotent() -> None:
                     )
                 ).all()
 
-            assert len(attempts) == 9
+            assert len(attempts) == 7
             assert len(requests) == 2
             assert {item.correlation_id for item in attempts} == {correlation_id}
             assert all(item.latency_ms >= 0 for item in attempts)
             assert {(item.tool_name, item.result_status, item.error_code) for item in attempts} >= {
-                ("list_room_types", ToolExecutionStatus.SUCCEEDED, None),
                 (
                     "lookup_booking",
                     ToolExecutionStatus.REJECTED,
                     "booking_not_found_or_verification_failed",
                 ),
                 (
-                    "create_room_service_request",
+                    "create_service_request",
                     ToolExecutionStatus.REJECTED,
                     "tool_confirmation_required",
                 ),
