@@ -38,6 +38,8 @@ export function KnowledgePage() {
   const [selected, setSelected] = useState<string | null>(null)
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  const [showCreate, setShowCreate] = useState(false)
+  const [newDocument, setNewDocument] = useState({ title: '', language: 'ar', content: '' })
 
   const list = useQuery({
     queryKey: ['knowledge', page, search],
@@ -69,6 +71,23 @@ export function KnowledgePage() {
       }),
     onSuccess: async () => finish('تم اعتماد المحتوى وبدأت مزامنة FAISS.'),
   })
+  const create = useMutation({
+    mutationFn: () => api<{ document_id: string }>('/admin/knowledge', {
+      method: 'POST', token, body: JSON.stringify({
+        title: newDocument.title,
+        language: newDocument.language,
+        source_format: 'plain_text',
+        content: newDocument.content,
+      }),
+    }),
+    onSuccess: async result => {
+      setShowCreate(false)
+      setNewDocument({ title: '', language: 'ar', content: '' })
+      setSelected(result.document_id)
+      setSuccess('تمت إضافة المستند كمسودة. راجعه ثم اضغط اعتماد.')
+      await invalidate()
+    },
+  })
   const archive = useMutation({
     mutationFn: (id: string) => api(`/admin/knowledge/${id}`, { method: 'DELETE', token }),
     onSuccess: async () => finish('تمت أرشفة المستند واستبعاده من الاسترجاع.'),
@@ -98,7 +117,7 @@ export function KnowledgePage() {
       revisionId: confirmation.revision.id,
     })
   }
-  const firstError = [approve.error, archive.error, restore.error, reindex.error].find(Boolean)
+  const firstError = [create.error, approve.error, archive.error, restore.error, reindex.error].find(Boolean)
   const currentDetail = detail.data
   const effective = currentDetail ? effectiveRevision(currentDetail) : null
   const draft = currentDetail ? pendingDraft(currentDetail) : null
@@ -108,11 +127,17 @@ export function KnowledgePage() {
     <PageHeader
       eyebrow="RAG KNOWLEDGE"
       title="قاعدة المعرفة"
-      description="راجع المحتوى المعتمد، اضبط حالة المستند، وأعد بناء فهرس FAISS."
-      action={<button className="button secondary" onClick={() => reindex.mutate()} disabled={reindex.isPending}>إعادة بناء FAISS</button>}
+      description="أضف مستنداً، اعتمده، ثم أعد بناء FAISS ليستخدمه البوت."
+      action={<div className="header-actions"><button className="button" onClick={() => setShowCreate(value => !value)}>إضافة مستند</button><button className="button secondary" onClick={() => reindex.mutate()} disabled={reindex.isPending}>إعادة بناء FAISS</button></div>}
     />
     {firstError && <ErrorState error={firstError} />}
     {success && <div className="success-banner" role="status">{success}</div>}
+    {showCreate && <form className="panel knowledge-create-form" onSubmit={event => { event.preventDefault(); create.mutate() }}>
+      <div className="panel-heading"><div><p className="eyebrow">NEW DOCUMENT</p><h2>إضافة مستند معرفة</h2></div><button type="button" className="button ghost" onClick={() => setShowCreate(false)}>إغلاق</button></div>
+      <div className="form-grid"><label>العنوان<input required minLength={3} value={newDocument.title} onChange={event => setNewDocument(value => ({ ...value, title: event.target.value }))} /></label><label>اللغة<select value={newDocument.language} onChange={event => setNewDocument(value => ({ ...value, language: event.target.value }))}><option value="ar">العربية</option><option value="en">English</option></select></label></div>
+      <label>المحتوى<textarea required minLength={20} rows={8} value={newDocument.content} onChange={event => setNewDocument(value => ({ ...value, content: event.target.value }))} /></label>
+      <div className="form-actions"><button className="button" type="submit" disabled={create.isPending}>{create.isPending ? 'جارٍ الحفظ…' : 'حفظ كمسودة'}</button></div>
+    </form>}
     <section className="panel filters">
       <label className="search-field"><span aria-hidden="true">⌕</span><span className="sr-only">بحث</span><input placeholder="ابحث في المستندات…" value={search} onChange={event => { setSearch(event.target.value); setPage(1) }} /></label>
     </section>

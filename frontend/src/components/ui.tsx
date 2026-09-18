@@ -56,10 +56,3 @@ export function ConfirmDialog({ open, title, body, confirmLabel, danger = false,
     </section>
   </div>
 }
-
-export function MetricValue({ value }: { value: unknown }) {
-  if (typeof value === 'number') return <strong>{value <= 1 ? `${(value * 100).toFixed(1)}%` : value.toLocaleString()}</strong>
-  if (value === null || value === undefined) return <span>—</span>
-  if (typeof value === 'string' || typeof value === 'boolean') return <strong>{String(value)}</strong>
-  return <code className="json-value">{JSON.stringify(value)}</code>
-}

@@ -3,12 +3,12 @@ import type { Language } from '../types'
 
 const messages = {
   ar: {
-    overview: 'نظرة عامة', conversations: 'المحادثات', knowledge: 'قاعدة المعرفة', hotelData: 'بيانات الفندق', requests: 'طلبات الخدمة', evaluations: 'التقييمات',
+    overview: 'نظرة عامة', conversations: 'المحادثات', knowledge: 'قاعدة المعرفة',
     logout: 'تسجيل الخروج', search: 'بحث', status: 'الحالة', language: 'اللغة', all: 'الكل', loading: 'جارٍ التحميل…', retry: 'إعادة المحاولة',
     noResults: 'لا توجد نتائج مطابقة', previous: 'السابق', next: 'التالي', save: 'حفظ', cancel: 'إلغاء', close: 'إغلاق', details: 'التفاصيل',
   },
   en: {
-    overview: 'Overview', conversations: 'Conversations', knowledge: 'Knowledge', hotelData: 'Hotel Data', requests: 'Service requests', evaluations: 'Evaluations',
+    overview: 'Overview', conversations: 'Conversations', knowledge: 'Knowledge',
     logout: 'Sign out', search: 'Search', status: 'Status', language: 'Language', all: 'All', loading: 'Loading…', retry: 'Retry',
     noResults: 'No matching results', previous: 'Previous', next: 'Next', save: 'Save', cancel: 'Cancel', close: 'Close', details: 'Details',
   },

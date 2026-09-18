@@ -4,13 +4,10 @@ import { useAuth } from '../auth/AuthContext'
 import { useI18n } from '../i18n/I18nContext'
 import type { Role } from '../types'
 
-const nav: { to: string; key: 'overview' | 'conversations' | 'knowledge' | 'hotelData' | 'requests' | 'evaluations'; icon: string; roles: Role[] }[] = [
+const nav: { to: string; key: 'overview' | 'conversations' | 'knowledge'; icon: string; roles: Role[] }[] = [
   { to: '/', key: 'overview', icon: '⌂', roles: ['admin', 'support', 'evaluator'] },
   { to: '/conversations', key: 'conversations', icon: '◫', roles: ['admin', 'support', 'evaluator'] },
   { to: '/knowledge', key: 'knowledge', icon: '▤', roles: ['admin'] },
-  { to: '/hotel-data', key: 'hotelData', icon: '▦', roles: ['admin'] },
-  { to: '/requests', key: 'requests', icon: '◇', roles: ['admin', 'support'] },
-  { to: '/evaluations', key: 'evaluations', icon: '⌁', roles: ['admin', 'evaluator'] },
 ]
 
 export function AppShell() {
@@ -20,11 +17,11 @@ export function AppShell() {
   if (!admin) return null
   return <div className="app-shell">
     <aside className={`sidebar ${open ? 'open' : ''}`} aria-label="Primary navigation">
-      <div className="brand"><span className="brand-mark">ن</span><div><strong>Nour Al-Sham</strong><small>AI Operations</small></div></div>
+      <div className="brand"><span className="brand-mark">ن</span><div><strong>Nour Al-Sham</strong><small>Hotel Support</small></div></div>
       <nav className="nav-list">
         {nav.filter(item => item.roles.includes(admin.role)).map(item => <NavLink key={item.to} to={item.to} end={item.to === '/'} onClick={() => setOpen(false)}><span aria-hidden="true">{item.icon}</span>{t(item.key)}</NavLink>)}
       </nav>
-      <div className="sidebar-footer"><span className="live-dot" />Hotel systems console</div>
+      <div className="sidebar-footer"><span className="live-dot" />Hotel support dashboard</div>
     </aside>
     {open && <button className="nav-scrim" aria-label="Close navigation" onClick={() => setOpen(false)} />}
     <div className="workspace">

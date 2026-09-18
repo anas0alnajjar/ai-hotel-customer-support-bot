@@ -3,14 +3,10 @@ import { Navigate, Outlet, Route, Routes } from 'react-router-dom'
 import { AuthProvider, useAuth } from './auth/AuthContext'
 import { AppShell } from './components/AppShell'
 import { I18nProvider } from './i18n/I18nContext'
-import { ConversationDetailPage } from './pages/ConversationDetailPage'
 import { ConversationsPage } from './pages/ConversationsPage'
-import { EvaluationsPage } from './pages/EvaluationsPage'
 import { KnowledgePage } from './pages/KnowledgePage'
-import { HotelDataPage } from './pages/HotelDataPage'
 import { LoginPage } from './pages/LoginPage'
 import { OverviewPage } from './pages/OverviewPage'
-import { ServiceRequestsPage } from './pages/ServiceRequestsPage'
 import type { Role } from './types'
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 15_000, retry: 1, refetchOnWindowFocus: false } } })
@@ -33,11 +29,7 @@ export function App() {
     <Route element={<Protected />}><Route element={<AppShell />}>
       <Route index element={<OverviewPage />} />
       <Route path="conversations" element={<ConversationsPage />} />
-      <Route path="conversations/:id" element={<ConversationDetailPage />} />
       <Route element={<RoleRoute roles={['admin']} />}><Route path="knowledge" element={<KnowledgePage />} /></Route>
-      <Route element={<RoleRoute roles={['admin']} />}><Route path="hotel-data" element={<HotelDataPage />} /></Route>
-      <Route element={<RoleRoute roles={['admin', 'support']} />}><Route path="requests" element={<ServiceRequestsPage />} /></Route>
-      <Route element={<RoleRoute roles={['admin', 'evaluator']} />}><Route path="evaluations" element={<EvaluationsPage />} /></Route>
     </Route></Route>
     <Route path="*" element={<Navigate to="/" replace />} />
   </Routes></AuthProvider></I18nProvider></QueryClientProvider>

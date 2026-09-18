@@ -20,7 +20,7 @@ export function LoginPage() {
   return <main className="login-page">
     <section className="login-visual" aria-label="Hotel operations introduction">
       <div className="login-brand"><span className="brand-mark large">ن</span><span>Nour Al-Sham Grand Hotel</span></div>
-      <div className="login-copy"><p className="eyebrow light">AI HOTEL OPERATIONS</p><h1>خدمة استباقية.<br />قرارات أوضح.</h1><p>مساحة تشغيل موحّدة لفريق الفندق: المحادثات، المعرفة، الطلبات، وجودة المساعد الذكي.</p></div>
+      <div className="login-copy"><p className="eyebrow light">HOTEL CUSTOMER SUPPORT</p><h1>دعم أسرع.<br />إدارة أبسط.</h1><p>لوحة مختصرة لمتابعة المحادثات وإدارة قاعدة معرفة الفندق.</p></div>
       <div className="login-proof"><span>MySQL</span><span>Gemini</span><span>FAISS</span><span>Tool Calling</span></div>
     </section>
     <section className="login-panel">
