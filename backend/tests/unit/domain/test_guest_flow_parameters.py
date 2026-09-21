@@ -426,3 +426,76 @@ def test_unknown_maintenance_category_requires_clarification_before_confirmation
     assert resolved.missing_parameters == ("category",)
     assert resolved.requires_confirmation is False
     assert parameters["category"] == "general"
+
+
+def test_availability_accepts_guest_date_formats() -> None:
+    state = ConversationState(
+        language="ar",
+        active_workflow=ActiveWorkflow.AVAILABILITY,
+    )
+    for value in (
+        "22/9/2026",
+        "22/09/2026",
+        "22-09-2026",
+        "2026/9/22",
+        "2026-09-22",
+        "\u0662\u0662/\u0660\u0669/\u0662\u0660\u0662\u0666",
+    ):
+        parameters = extract_parameters(
+            value,
+            state,
+            idempotency_seed=f"date-{value}",
+        )
+        assert parameters["check_in"] == date(2026, 9, 22)
+
+
+def test_availability_extracts_day_first_range_and_adults() -> None:
+    parameters = extract_parameters(
+        "أريد حجز غرفة لشخصين من 22/9/2026 إلى 28/9/2026",
+        ConversationState(language="ar"),
+        idempotency_seed="day-first-range",
+    )
+
+    assert parameters["check_in"] == date(2026, 9, 22)
+    assert parameters["check_out"] == date(2026, 9, 28)
+    assert parameters["adults"] == 2
+
+
+def test_availability_followup_accepts_slash_checkout() -> None:
+    state = ConversationState(
+        language="ar",
+        active_workflow=ActiveWorkflow.AVAILABILITY,
+    )
+    first = extract_parameters(
+        "22/09/2026",
+        state,
+        idempotency_seed="slash-check-in",
+    )
+    state = _state_with_parameters(
+        state,
+        IntentCode.ROOM_AVAILABILITY,
+        first,
+        active_workflow=ActiveWorkflow.AVAILABILITY,
+    )
+    second = extract_parameters(
+        "2026/9/28",
+        state,
+        idempotency_seed="slash-check-out",
+    )
+
+    assert second["check_in"] == date(2026, 9, 22)
+    assert second["check_out"] == date(2026, 9, 28)
+
+
+def test_invalid_guest_date_does_not_crash_or_become_a_stay_date() -> None:
+    parameters = extract_parameters(
+        "31/02/2026",
+        ConversationState(
+            language="ar",
+            active_workflow=ActiveWorkflow.AVAILABILITY,
+        ),
+        idempotency_seed="invalid-date",
+    )
+
+    assert "check_in" not in parameters
+    assert "check_out" not in parameters

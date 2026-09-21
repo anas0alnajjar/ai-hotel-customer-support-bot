@@ -359,7 +359,7 @@ def test_clear_airport_information_bypasses_ai_as_high_confidence_knowledge(
 def test_dated_availability_is_a_deterministic_fast_path(
     production_router: SafeIntentRouter,
 ) -> None:
-    text = "أريد غرفة من 2026-08-10 إلى 2026-08-12 لشخصين"
+    text = "أريد حجز غرفة لشخصين من 22/9/2026 إلى 28/9/2026"
     values = parameters(text)
     initial = production_router.route(text, "ar", parameters=values)
     provider = OfflineProvider([])

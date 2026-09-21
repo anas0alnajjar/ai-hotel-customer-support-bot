@@ -37,7 +37,14 @@ from hotel_bot.domain.telegram.models import (
     TelegramInlineKeyboardMarkup,
 )
 
-DATE_PATTERN = re.compile(r"\b20\d{2}-\d{2}-\d{2}\b")
+DATE_PATTERN = re.compile(
+    r"\b(?:20\d{2}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d{1,2}[-/]20\d{2})\b"
+)
+DATE_DIGITS = str.maketrans(
+    "\u0660\u0661\u0662\u0663\u0664\u0665\u0666\u0667\u0668\u0669"
+    "\u06f0\u06f1\u06f2\u06f3\u06f4\u06f5\u06f6\u06f7\u06f8\u06f9",
+    "01234567890123456789",
+)
 BOOKING_PATTERN = re.compile(
     r"\bBKG-[A-Z0-9-]{4,28}\b",
     re.IGNORECASE,
@@ -264,6 +271,18 @@ def _first(
     )
 
 
+def _parse_guest_date(value: str) -> date | None:
+    parts = [int(part) for part in re.split(r"[-/]", value)]
+    if parts[0] >= 1000:
+        year, month, day = parts
+    else:
+        day, month, year = parts
+    try:
+        return date(year, month, day)
+    except ValueError:
+        return None
+
+
 def _service_description(text: str) -> str | None:
     room_match = ROOM_PATTERN.search(text)
     description = text
@@ -333,18 +352,24 @@ def extract_parameters(
 
     values: dict[str, object] = {}
 
-    dates = DATE_PATTERN.findall(text)
+    dates: list[date] = []
+    for raw_date in DATE_PATTERN.findall(text.translate(DATE_DIGITS)):
+        parsed = _parse_guest_date(raw_date)
+        if parsed is None:
+            dates = []
+            break
+        dates.append(parsed)
 
     check_in = state.check_in
     check_out = state.check_out
     if len(dates) >= 2:
-        check_in = check_in or date.fromisoformat(dates[0])
-        check_out = check_out or date.fromisoformat(dates[1])
+        check_in = check_in or dates[0]
+        check_out = check_out or dates[1]
     elif dates:
         if check_in is None:
-            check_in = date.fromisoformat(dates[0])
+            check_in = dates[0]
         elif check_out is None:
-            check_out = date.fromisoformat(dates[0])
+            check_out = dates[0]
 
     if check_in is not None:
         values["check_in"] = check_in
